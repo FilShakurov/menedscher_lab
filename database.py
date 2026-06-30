@@ -400,11 +400,11 @@ class Database:
         finally:
             conn.close()
 
-db = Database("database.db")
-
-rows = db.show_all_objects()
-for row in rows:
-    print(row["id"], row["name_object"])
+# db = Database("database.db")
+#
+# rows = db.show_all_objects()
+# for row in rows:
+#     print(row["id"], row["name_object"])
 
 
 

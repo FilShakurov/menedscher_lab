@@ -17,8 +17,8 @@ class ZagrVDatabase:
         df = pd.read_excel(path)
         self.db.add_probi(df, id_partii)
 
-    def add_gran_bd(self, path):
-        df = pd.read_excel(path)
+    def add_gran_bd(self, df):
+        # df = pd.read_excel(path)
         self.db.save_grans_bulk_by_lab_nomer(df)
 
 
@@ -64,7 +64,7 @@ class MainCore:
         self.db_show = ShowIzDatabase(self.db)
 
 
-core = MainCore("database.db")
+# core = MainCore("database.db")
 #
 # core.db_add.add_object_bd("ВСЖМ-123")
 # #
@@ -72,7 +72,7 @@ core = MainCore("database.db")
 #
 # core.db_add.add_probi_bd("Пробы.xlsx", 3)
 
-core.db_add.add_gran_bd("Граны2.xlsx")
+# core.db_add.add_gran_bd("Граны2.xlsx")
 #
 # core.db_show.show_grani_part_bd(1)
 # core.db_show.show_grani_part_bd(2)

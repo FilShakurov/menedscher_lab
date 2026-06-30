@@ -1,10 +1,11 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget,
                              QVBoxLayout, QLabel, QPushButton, QHBoxLayout,
-                             QListWidget, QListWidgetItem)
+                             QListWidget, QListWidgetItem, QFileDialog)
 from PyQt5.QtCore import Qt
 import qdarkstyle
 from orkestrator_db import MainCore
+from gransostav import RaschetGranov
 
 
 class MainWindow(QMainWindow):
@@ -57,15 +58,47 @@ class MainWindow(QMainWindow):
         self.list_widget2.setFixedWidth(200)
         vlayout2.addWidget(self.list_widget2)
 
-        self.btn = QPushButton("Добавить партию")
-        self.btn.clicked.connect(self.add_partiya)
-        vlayout2.addWidget(self.btn)
+        self.btn2 = QPushButton("Добавить партию")
+        self.btn2.clicked.connect(self.add_partiya)
+        vlayout2.addWidget(self.btn2)
 
         vlayout3 = QVBoxLayout()
         hlayout.addLayout(vlayout3)
 
+        hlayout2 = QHBoxLayout()
+        vlayout3.addLayout(hlayout2)
+
+        self.btn3 = QPushButton("Добавить пробы")
+        self.btn3.clicked.connect(self.add_probi)
+        hlayout2.addWidget(self.btn3)
+
+        self.btn4 = QPushButton("Добавить граны")
+        self.btn4.clicked.connect(self.add_grani)
+        hlayout2.addWidget(self.btn4)
+
         self.info_label = QLabel()
         vlayout3.addWidget(self.info_label)
+
+    def add_grani(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Открыть файл с пробами", "", "Excel Files (*.xlsx *.xls)")
+        if not path:
+            return
+
+        df = RaschetGranov.zagr_excel(path)
+        df = RaschetGranov.raschet_gran_pesk(df)
+
+        self.orkestr_db.db_add.add_gran_bd(df)
+
+    def add_probi(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Открыть файл с пробами", "", "Excel Files (*.xlsx *.xls)")
+        if not path:
+            return
+
+        db_id = self.list_widget2.currentItem().data(Qt.UserRole)
+
+        self.orkestr_db.db_add.add_probi_bd(path, db_id)
 
     def add_object(self):
         pass
@@ -76,6 +109,7 @@ class MainWindow(QMainWindow):
     def on_item_clicked1(self, item):
         try:
             db_id = item.data(Qt.UserRole)
+            object = item.text()
 
             self.list_widget2.clear()
             rows = self.orkestr_db.db_show.show_all_partii_object(db_id)
@@ -84,7 +118,7 @@ class MainWindow(QMainWindow):
                 item.setData(Qt.UserRole, row["id"])
                 self.list_widget2.addItem(item)
 
-            object = item.text()
+
 
             self.info_label.setText(f"Выбран объект: {object}")
         except Exception as e:
