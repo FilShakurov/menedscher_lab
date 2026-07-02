@@ -71,6 +71,26 @@ class Database:
                     )
                 """)
 
+        cursor.execute("""  
+                        CREATE TABLE IF NOT EXISTS grans_archive (
+                            archive_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                            proba_id            INTEGER NOT NULL,
+                            gran_10             REAL,
+                            gran_5_10           REAL,
+                            gran_5_2            REAL,
+                            gran_2_1            REAL,
+                            gran_1_0_5          REAL,
+                            gran_0_5_0_25       REAL,
+                            gran_0_25_0_10      REAL,
+                            gran_0_10_0_05      REAL,
+                            gran_0_05_0_01      REAL,
+                            gran_0_01_0_002     REAL,
+                            gran_0_002          REAL,
+                            created_at          TEXT,
+                            archived_at         TEXT NOT NULL
+                        );       
+                    """)
+
         conn.commit()
         conn.close()
 
@@ -251,13 +271,11 @@ class Database:
             df_merged = df.merge(df_probi, on='lab_nomer', how='left')
 
             if df_merged['proba_id'].isna().any():
-                missing = df_merged[df_merged['proba_id'].isna()]['lab_nomer'].tolist()
+                missing = df_merged.loc[df_merged['proba_id'].isna(), 'lab_nomer'].tolist()
                 raise ValueError(f'Не найдены proba_id для lab_nomer: {missing}')
-
 
             df_to_save = df_merged[config.COLUMNS_GRAN_BD].copy()
 
-            cursor = conn.cursor()
             current_time = datetime.now().isoformat()
 
             rows = [
@@ -279,12 +297,65 @@ class Database:
                 for row in df_to_save.itertuples(index=False)
             ]
 
+            cursor = conn.cursor()
+            conn.execute("BEGIN")
+
+            cursor.execute("DROP TABLE IF EXISTS temp_grans_import")
+
+            cursor.execute("""
+                CREATE TEMP TABLE temp_grans_import (
+                    proba_id            INTEGER PRIMARY KEY,
+                    gran_10             REAL,
+                    gran_5_10           REAL,
+                    gran_5_2            REAL,
+                    gran_2_1            REAL,
+                    gran_1_0_5          REAL,
+                    gran_0_5_0_25       REAL,
+                    gran_0_25_0_10      REAL,
+                    gran_0_10_0_05      REAL,
+                    gran_0_05_0_01      REAL,
+                    gran_0_01_0_002     REAL,
+                    gran_0_002          REAL,
+                    created_at          TEXT
+                )
+            """)
+
             cursor.executemany("""
-                INSERT INTO grans (
-                    proba_id, gran_10, gran_5_10, gran_5_2, gran_2_1, gran_1_0_5, gran_0_5_0_25,
-                     gran_0_25_0_10, gran_0_10_0_05, gran_0_05_0_01, gran_0_01_0_002, gran_0_002, created_at
+                INSERT INTO temp_grans_import (
+                    proba_id, gran_10, gran_5_10, gran_5_2, gran_2_1, gran_1_0_5,
+                    gran_0_5_0_25, gran_0_25_0_10, gran_0_10_0_05, gran_0_05_0_01,
+                    gran_0_01_0_002, gran_0_002, created_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows)
+
+            cursor.execute("""
+                INSERT INTO grans_archive (
+                    proba_id, gran_10, gran_5_10, gran_5_2, gran_2_1, gran_1_0_5,
+                    gran_0_5_0_25, gran_0_25_0_10, gran_0_10_0_05, gran_0_05_0_01,
+                    gran_0_01_0_002, gran_0_002, created_at, archived_at
+                )
+                SELECT
+                    g.proba_id, g.gran_10, g.gran_5_10, g.gran_5_2, g.gran_2_1, g.gran_1_0_5,
+                    g.gran_0_5_0_25, g.gran_0_25_0_10, g.gran_0_10_0_05, g.gran_0_05_0_01,
+                    g.gran_0_01_0_002, g.gran_0_002, g.created_at, ?
+                FROM grans g
+                INNER JOIN temp_grans_import t
+                    ON t.proba_id = g.proba_id
+            """, (current_time,))
+
+            cursor.execute("""
+                INSERT INTO grans (
+                    proba_id, gran_10, gran_5_10, gran_5_2, gran_2_1, gran_1_0_5,
+                    gran_0_5_0_25, gran_0_25_0_10, gran_0_10_0_05, gran_0_05_0_01,
+                    gran_0_01_0_002, gran_0_002, created_at
+                )
+                SELECT
+                    proba_id, gran_10, gran_5_10, gran_5_2, gran_2_1, gran_1_0_5,
+                    gran_0_5_0_25, gran_0_25_0_10, gran_0_10_0_05, gran_0_05_0_01,
+                    gran_0_01_0_002, gran_0_002, created_at
+                FROM temp_grans_import
+                WHERE true
                 ON CONFLICT(proba_id) DO UPDATE SET
                     gran_10 = excluded.gran_10,
                     gran_5_10 = excluded.gran_5_10,
@@ -296,8 +367,11 @@ class Database:
                     gran_0_10_0_05 = excluded.gran_0_10_0_05,
                     gran_0_05_0_01 = excluded.gran_0_05_0_01,
                     gran_0_01_0_002 = excluded.gran_0_01_0_002,
-                    gran_0_002 = excluded.gran_0_002
-            """, rows)
+                    gran_0_002 = excluded.gran_0_002,
+                    created_at = excluded.created_at
+            """)
+
+            cursor.execute("DROP TABLE IF EXISTS temp_grans_import")
 
             conn.commit()
 
@@ -372,11 +446,23 @@ class Database:
 
         try:
             cursor.execute("""  
-                CREATE TABLE IF NOT EXISTS wlashn_table (
-                    proba_id INTEGER PRIMARY KEY,
-                    wlashn REAL,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )       
+                CREATE TABLE IF NOT EXISTS grans_archive (
+                    archive_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    proba_id            INTEGER NOT NULL,
+                    gran_10             REAL,
+                    gran_5_10           REAL,
+                    gran_5_2            REAL,
+                    gran_2_1            REAL,
+                    gran_1_0_5          REAL,
+                    gran_0_5_0_25       REAL,
+                    gran_0_25_0_10      REAL,
+                    gran_0_10_0_05      REAL,
+                    gran_0_05_0_01      REAL,
+                    gran_0_01_0_002     REAL,
+                    gran_0_002          REAL,
+                    created_at          TEXT,
+                    archived_at         TEXT NOT NULL
+                );       
             """)
             conn.commit()
 
@@ -400,7 +486,7 @@ class Database:
         finally:
             conn.close()
 
-# db = Database("database.db")
+db = Database("database.db")
 #
 # rows = db.show_all_objects()
 # for row in rows:
