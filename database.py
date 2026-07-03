@@ -560,16 +560,16 @@ class Database:
         finally:
             conn.close()
 
-db = Database("database.db")
+# db = Database("database.db")
 
 #
 # rows = db.show_all_objects()
 # for row in rows:
 #     print(row["id"], row["name_object"])
 
-df = pd.read_excel('testtest.xlsx')
+# df = pd.read_excel('testtest.xlsx')
 
-db.save_fizika_bulk_by_lab_nomer(df)
+
 
 
 

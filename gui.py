@@ -1,11 +1,88 @@
 import sys
+import traceback
+
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget,
-                             QVBoxLayout, QLabel, QPushButton, QHBoxLayout,
-                             QListWidget, QListWidgetItem, QFileDialog)
+                             QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QLineEdit,
+                             QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QDialog)
 from PyQt5.QtCore import Qt
 import qdarkstyle
 from orkestrator_db import MainCore
 from gransostav import RaschetGranov
+from core import zagr_file, zagr_file2, zagr_tarirovki, obrabotka_df_posle_zagr, rashet_gran
+import config
+
+
+class NewQDialog(QDialog):
+    def __init__(self, db, parent=None):
+        super().__init__()
+        self.setWindowTitle("Доп окно")
+        self.resize(400, 400)
+
+        self.orkestr_db = db
+
+        main_layout = QVBoxLayout(self)
+
+
+        self.lineedit = QLineEdit('')  # Поле ввода
+        main_layout.addWidget(self.lineedit)
+
+        self.btn = QPushButton("Добавить объект")
+        self.btn.clicked.connect(self.btn_calc)
+        main_layout.addWidget(self.btn)
+
+    def btn_calc(self):
+        try:
+            text = self.lineedit.text()
+            self.orkestr_db.db_add.add_object_bd(text)
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+
+
+class NewQDialog2(QDialog):
+    def __init__(self, db, parent=None):
+        super().__init__()
+        self.setWindowTitle("Доп окно")
+        self.resize(400, 400)
+
+        self.orkestr_db = db
+
+        main_layout = QVBoxLayout(self)
+
+        self.list_widget1 = QListWidget()
+        rows = self.orkestr_db.db_show.show_all_objects()
+        for row in rows:
+            item = QListWidgetItem(row["name_object"])
+            # Сохраняем ID из БД в роли UserRole (или любой другой роли)
+            item.setData(Qt.UserRole, row["id"])
+            self.list_widget1.addItem(item)
+
+        main_layout.addWidget(self.list_widget1)
+
+        self.lineedit = QLineEdit('')  # Поле ввода
+        main_layout.addWidget(self.lineedit)
+
+        self.btn = QPushButton("Добавить партию")
+        self.btn.clicked.connect(self.btn_calc)
+        main_layout.addWidget(self.btn)
+
+    def btn_calc(self):
+        try:
+            item = self.list_widget1.currentItem()
+
+            if item:
+                # Получаем данные из Qt.UserRole (роль 0x100)
+                db_id = item.data(Qt.UserRole)
+
+                print(f"Данные из UserRole: {db_id}")
+            else:
+                print("Ничего не выбрано")
+            # object = self.list_widget1.currentData()
+            text = self.lineedit.text()
+            self.orkestr_db.db_add.add_partiya_bd(text, db_id)
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
 
 
 class MainWindow(QMainWindow):
@@ -25,8 +102,12 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
         central_widget.setLayout(main_layout)
 
-        label = QLabel('Шаблон')
-        main_layout.addWidget(label)
+        hlayout_1 = QHBoxLayout()
+        main_layout.addLayout(hlayout_1)
+
+        self.btn_namiv = QPushButton("Добавить намыв")
+        self.btn_namiv.clicked.connect(self.add_namiv)
+        hlayout_1.addWidget(self.btn_namiv)
 
         hlayout = QHBoxLayout()
         main_layout.addLayout(hlayout)
@@ -68,43 +149,103 @@ class MainWindow(QMainWindow):
         hlayout2 = QHBoxLayout()
         vlayout3.addLayout(hlayout2)
 
-        self.btn3 = QPushButton("Добавить пробы")
-        self.btn3.clicked.connect(self.add_probi)
-        hlayout2.addWidget(self.btn3)
-
-        self.btn4 = QPushButton("Добавить граны")
-        self.btn4.clicked.connect(self.add_grani)
-        hlayout2.addWidget(self.btn4)
+        self.btn5 = QPushButton("Добавить рабочую сводную")
+        self.btn5.clicked.connect(self.add_rab_svodn)
+        hlayout2.addWidget(self.btn5)
 
         self.info_label = QLabel()
         vlayout3.addWidget(self.info_label)
 
-    def add_grani(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Открыть файл с пробами", "", "Excel Files (*.xlsx *.xls)")
-        if not path:
+
+    def add_rab_svodn(self):
+        path_rab_svodn, _ = QFileDialog.getOpenFileName(
+            self, "Выберите файл намыва", "", "Excel Files (*.xlsx *.xls)")
+        if not path_rab_svodn:
             return
 
-        df = RaschetGranov.zagr_excel(path)
-        df = RaschetGranov.raschet_gran_pesk(df)
+        try:
+            df = zagr_file2(path_rab_svodn)
 
-        self.orkestr_db.db_add.add_gran_bd(df)
+            item = self.list_widget2.currentItem()
+            if item:
+                db_id = item.data(Qt.UserRole)
+                print(f"Данные из UserRole: {db_id}")
+            else:
+                print("Ничего не выбрано")
 
-    def add_probi(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Открыть файл с пробами", "", "Excel Files (*.xlsx *.xls)")
-        if not path:
+            self.orkestr_db.db_add.add_rab_svodnaya(df, db_id)
+
+            df2 = RaschetGranov.zagr_excel(path_rab_svodn)
+            df2 = RaschetGranov.raschet_gran_pesk(df2)
+
+            self.orkestr_db.db_add.add_gran_bd(df2)
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+
+
+
+    def add_namiv(self):
+        path_namiv, _ = QFileDialog.getOpenFileName(
+            self, "Выберите файл намыва", "", "Excel Files (*.xlsx *.xls)")
+        if not path_namiv:
             return
 
-        db_id = self.list_widget2.currentItem().data(Qt.UserRole)
+        path_tarirovki = "tarirovki.xlsx"
 
-        self.orkestr_db.db_add.add_probi_bd(path, db_id)
+        try:
+            df = zagr_file(path_namiv)
+            df_tarirovk = zagr_tarirovki(path_tarirovki)
+            udelka = 2.7
+
+            df_agg = obrabotka_df_posle_zagr(df)
+            df_itog, spisok_otrizat_grani = rashet_gran(df_agg, df_tarirovk, udelka)
+
+            if spisok_otrizat_grani:
+                QMessageBox.warning(self, "Внимание", f"Есть отрицательные граны {spisok_otrizat_grani}")
+
+            df = df_itog.rename(columns=config.cols_bd_rename)
+
+            self.orkestr_db.db_add.add_gran_bd(df)
+
+            QMessageBox.information(self, "Успех", f"Граны ({len(df_itog)} шт.) в базе данных")
+
+        except Exception as e:
+            print(e)
+            QMessageBox.critical(self, "Ошибка", f"Рабочий журнал не получилось добавить: {e}")
+            traceback.print_exc()
+
+
 
     def add_object(self):
-        pass
+        try:
+            dialog = NewQDialog(self.orkestr_db, self)
+            dialog.exec_()
+
+            self.list_widget1.clear()
+            rows = self.orkestr_db.db_show.show_all_objects()
+            for row in rows:
+                item = QListWidgetItem(row["name_object"])
+                item.setData(Qt.UserRole, row["id"])
+                self.list_widget1.addItem(item)
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
 
     def add_partiya(self):
-        pass
+        try:
+            dialog = NewQDialog2(self.orkestr_db, self)
+            dialog.exec_()
+
+            # self.list_widget2.clear()
+            # rows = self.orkestr_db.db_show.show_all_partii_object(db_id)
+            # for row in rows:
+            #     item = QListWidgetItem(row["name_partii"])
+            #     item.setData(Qt.UserRole, row["id"])
+            #     self.list_widget2.addItem(item)
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
 
     def on_item_clicked1(self, item):
         try:
