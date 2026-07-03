@@ -51,45 +51,61 @@ class Database:
         """)
 
         cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS grans (
-                        proba_id INTEGER PRIMARY KEY,
-                        gran_10 REAL,
-                        gran_5_10 REAL,
-                        gran_5_2 REAL,
-                        gran_2_1 REAL,
-                        gran_1_0_5 REAL,
-                        gran_0_5_0_25 REAL,
-                        gran_0_25_0_10 REAL,
-                        gran_0_10_0_05 REAL,
-                        gran_0_05_0_01 REAL,
-                        gran_0_01_0_002 REAL,
-                        gran_0_002 REAL,
-                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    
-                        FOREIGN KEY(proba_id) REFERENCES probi(id)
-                            ON DELETE CASCADE
-                    )
-                """)
+            CREATE TABLE IF NOT EXISTS grans (
+                proba_id INTEGER PRIMARY KEY,
+                gran_10 REAL,
+                gran_5_10 REAL,
+                gran_5_2 REAL,
+                gran_2_1 REAL,
+                gran_1_0_5 REAL,
+                gran_0_5_0_25 REAL,
+                gran_0_25_0_10 REAL,
+                gran_0_10_0_05 REAL,
+                gran_0_05_0_01 REAL,
+                gran_0_01_0_002 REAL,
+                gran_0_002 REAL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            
+                FOREIGN KEY(proba_id) REFERENCES probi(id)
+                    ON DELETE CASCADE
+            )
+        """)
 
         cursor.execute("""  
-                        CREATE TABLE IF NOT EXISTS grans_archive (
-                            archive_id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                            proba_id            INTEGER NOT NULL,
-                            gran_10             REAL,
-                            gran_5_10           REAL,
-                            gran_5_2            REAL,
-                            gran_2_1            REAL,
-                            gran_1_0_5          REAL,
-                            gran_0_5_0_25       REAL,
-                            gran_0_25_0_10      REAL,
-                            gran_0_10_0_05      REAL,
-                            gran_0_05_0_01      REAL,
-                            gran_0_01_0_002     REAL,
-                            gran_0_002          REAL,
-                            created_at          TEXT,
-                            archived_at         TEXT NOT NULL
-                        );       
-                    """)
+            CREATE TABLE IF NOT EXISTS grans_archive (
+                archive_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                proba_id            INTEGER NOT NULL,
+                gran_10             REAL,
+                gran_5_10           REAL,
+                gran_5_2            REAL,
+                gran_2_1            REAL,
+                gran_1_0_5          REAL,
+                gran_0_5_0_25       REAL,
+                gran_0_25_0_10      REAL,
+                gran_0_10_0_05      REAL,
+                gran_0_05_0_01      REAL,
+                gran_0_01_0_002     REAL,
+                gran_0_002          REAL,
+                created_at          TEXT,
+                archived_at         TEXT NOT NULL
+            );       
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fizika (
+                proba_id INTEGER PRIMARY KEY,
+                ukol TEXT,
+                opisanie_razbor TEXT,
+                wlashn REAL,
+                plotn REAL,
+                udelka REAL,
+                organika REAL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY(proba_id) REFERENCES probi(id)
+                    ON DELETE CASCADE
+            )
+        """)
 
         conn.commit()
         conn.close()
@@ -382,6 +398,64 @@ class Database:
         finally:
             conn.close()
 
+    def save_fizika_bulk_by_lab_nomer(self, df):
+        conn = self.get_connection()
+
+        try:
+            df_probi = pd.read_sql_query(
+                "SELECT id AS proba_id, lab_nomer FROM probi",
+                conn
+            )
+
+            df_merged = df.merge(df_probi, on='lab_nomer', how='left')
+
+            if df_merged['proba_id'].isna().any():
+                missing = df_merged[df_merged['proba_id'].isna()]['lab_nomer'].tolist()
+                raise ValueError(f'Не найдены proba_id для lab_nomer: {missing}')
+
+            columns = ['proba_id', 'ukol', 'opisanie_razbor', 'wlashn', 'plotn', 'udelka', 'organika']
+            df_to_save = df_merged[columns].copy()
+
+            cursor = conn.cursor()
+            current_time = datetime.now().isoformat()
+
+            rows = [
+                (
+                    int(row.proba_id),
+                    row.ukol,
+                    row.opisanie_razbor,
+                    row.wlashn,
+                    row.plotn,
+                    row.udelka,
+                    row.organika,
+                    current_time
+                )
+                for row in df_to_save.itertuples(index=False)
+            ]
+
+            cursor.executemany("""
+                INSERT INTO fizika (
+                    proba_id, ukol, opisanie_razbor, wlashn, plotn, udelka, organika, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(proba_id) DO UPDATE SET
+                    ukol = excluded.ukol,
+                    opisanie_razbor = excluded.opisanie_razbor,
+                    wlashn = excluded.wlashn,
+                    plotn = excluded.plotn,
+                    udelka = excluded.udelka,
+                    organika = excluded.organika
+            """, rows)
+
+            conn.commit()
+
+        except Exception:
+            conn.rollback()
+            raise
+
+        finally:
+            conn.close()
+
     def get_gran_data_by_party_name(self, party_name):
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -477,7 +551,7 @@ class Database:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("DROP TABLE IF EXISTS WLASHN")
+            cursor.execute("DROP TABLE IF EXISTS fizika")
             conn.commit()
 
         except Exception:
@@ -487,12 +561,15 @@ class Database:
             conn.close()
 
 db = Database("database.db")
+
 #
 # rows = db.show_all_objects()
 # for row in rows:
 #     print(row["id"], row["name_object"])
 
+df = pd.read_excel('testtest.xlsx')
 
+db.save_fizika_bulk_by_lab_nomer(df)
 
 
 
