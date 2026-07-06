@@ -105,7 +105,6 @@ COLS_GRAN = [
 agg_dict = {
     'nomer_predv': 'first',
     'kolba/naveska_s_rast': 'last',
-    'kolba/naveska': 'last',
     'areometr': 'first',
     'rast_ost': 'first',
     'gran_10': 'first',
@@ -118,6 +117,7 @@ agg_dict = {
 }
 
 temp_agg = {
+    'kolba/naveska': ['first', 'last'],
     '1_zamer/temp': ['first', 'last'],
     '2_zamer/temp': ['first', 'last'],
     '3_zamer/temp': ['first', 'last'],

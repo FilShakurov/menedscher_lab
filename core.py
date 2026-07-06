@@ -107,11 +107,11 @@ def rashet_x1_x2_x3(df_agg, udelka):
     # df_agg = df_agg.dropna(subset=['3_zamer/temp_first']).copy()
 
     df_agg['X1'] = df_agg['udelka'] * df_agg['zamer_1'] / (df_agg['udelka'] - 1) / df_agg[
-        'kolba/naveska_s_rast_last'] * (100 - df_agg['koef_K'])
+        'kolba/naveska_last'] * (100 - df_agg['koef_K'])
     df_agg['X2'] = df_agg['udelka'] * df_agg['zamer_2'] / (df_agg['udelka'] - 1) / df_agg[
-        'kolba/naveska_s_rast_last'] * (100 - df_agg['koef_K'])
+        'kolba/naveska_last'] * (100 - df_agg['koef_K'])
     df_agg['X3'] = df_agg['udelka'] * df_agg['zamer_3'] / (df_agg['udelka'] - 1) / df_agg[
-        'kolba/naveska_s_rast_last'] * (100 - df_agg['koef_K'])
+        'kolba/naveska_last'] * (100 - df_agg['koef_K'])
 
     return df_agg
 
