@@ -3,7 +3,8 @@ import traceback
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget,
                              QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QLineEdit,
-                             QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QDialog)
+                             QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
+                             QDialog, QPlainTextEdit)
 from PyQt5.QtCore import Qt
 import qdarkstyle
 from openpyxl import load_workbook
@@ -11,6 +12,7 @@ from orkestrator_db import MainCore
 from gransostav import RaschetGranov
 from core import zagr_file, zagr_file2, zagr_tarirovki, obrabotka_df_posle_zagr, rashet_gran, vigruzka_namiv
 import config
+from klasspredict import ClassPredict
 
 
 class NewQDialog(QDialog):
@@ -156,17 +158,71 @@ class MainWindow(QMainWindow):
         self.btn5.clicked.connect(self.add_rab_svodn)
         hlayout2.addWidget(self.btn5)
 
-        self.btn6 = QPushButton("Получить все намывы по этой партии")
-        self.btn6.clicked.connect(self.get_namivs)
-        hlayout2.addWidget(self.btn6)
-
         self.info_label = QLabel()
         vlayout3.addWidget(self.info_label)
 
+        self.warning_box = QPlainTextEdit()
+        hlayout.addWidget(self.warning_box)
+
+        self.btn6 = QPushButton("Получить все намывы по этой партии")
+        self.btn6.clicked.connect(self.get_namivs)
+        vlayout3.addWidget(self.btn6)
+
         self.btn7 = QPushButton("Выгрузить в Excel отчет по партии")
         self.btn7.clicked.connect(self.save_part_excel)
-        hlayout2.addWidget(self.btn7)
+        vlayout3.addWidget(self.btn7)
 
+        self.btn8 = QPushButton("Проверка по статистике")
+        self.btn8.clicked.connect(self.btn_calc)
+        vlayout3.addWidget(self.btn8)
+
+
+    def btn_calc(self):
+        try:
+            df_table = self.df_partii
+
+            bad_rows = ClassPredict.predict(df_table)
+            bad_rows = bad_rows.sort_values(by=['lab_nomer'], ascending=True)
+            # bad_rows = bad_rows[config.COLUMNS2]
+
+            if not bad_rows.empty:
+                messages = []
+                for idx, row in bad_rows.iterrows():
+                    err_type = row['error_type']
+                    if err_type == 'плотность':
+                        messages.append(
+                            f"{row['lab_nomer']}: {err_type} (испытание, статистика)="
+                            f"{row['plotn']:.2f}, "
+                            f"{row['plotn_predict']:.2f}"
+                        )
+                    elif err_type == 'влажность':
+                        messages.append(
+                            f"{row['lab_nomer']}: {err_type} (испытание, статистика)="
+                            f"{row['wlashn']:.3f}, "
+                            f"{row['wlashn_predict']:.3f}"
+                        )
+
+                    elif err_type == 'Укол':
+                        messages.append(
+                            f"{row['lab_nomer']}: {err_type} (испытание, статистика)="
+                            f"{row['ukol_values']:.1f}, "
+                            f"{row['ukol_predict']:.1f}"
+                        )
+
+                self.warning_box.setPlainText("\n\n".join(messages))
+                QMessageBox.warning(
+                    self,
+                    "Предупреждение",
+                    f"Найдено подозрительных номеров: {len(bad_rows)}"
+                )
+            else:
+                self.warning_box.setPlainText("Расхождений не найдено.")
+
+
+
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
 
     def save_part_excel(self):
         file_path, _ = QFileDialog.getSaveFileName(
@@ -178,7 +234,7 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
         
-        self.df_partii.to_excel()
+        self.df_partii.to_excel(file_path)
 
     def add_rab_svodn(self):
         path_rab_svodn, _ = QFileDialog.getOpenFileName(
@@ -339,21 +395,39 @@ class MainWindow(QMainWindow):
             print(e)
 
     def on_item_clicked2(self, item):
-        object = self.list_widget1.currentItem().text()
-        partiya = item.text()
-        db_id = item.data(Qt.UserRole)
+        try:
+            object = self.list_widget1.currentItem().text()
+            partiya = item.text()
+            db_id = item.data(Qt.UserRole)
 
-        self.df_partii = self.orkestr_db.db_show.poln_info_part(db_id)
+            self.df_partii = self.orkestr_db.db_show.poln_info_part(db_id)
 
-        print(self.df_partii)
-        print(self.df_partii)
+            print(self.df_partii)
+            print(self.df_partii)
 
-        count = len(self.df_partii)
-        count_pust_gran = 99999
+            count = len(self.df_partii)
+            count_pust_gran = len(self.df_partii[self.df_partii[config.cols_bd_rename.values()].isna().any(axis=1)])
+            count_pust_wlashn = len(self.df_partii[self.df_partii['wlashn'].isna()])
 
-        self.info_label.setText(f"Выбрано: {object}, Партия: {partiya}\n"
-                                f"Количество проб {count}\n"
-                                f"Количество не хватающих гранов {count_pust_gran}")
+            mask = self.df_partii['plotn'].isna() & self.df_partii['ukol'].notna()
+            count_pust_plotn = mask.sum()
+
+            mask_org = self.df_partii['organika'].notna()
+            count_org = mask_org.sum()
+
+            mask_udelka = self.df_partii['udelka'].notna()
+            count_udelka = mask_udelka.sum()
+
+            self.info_label.setText(f"Выбрано: {object}, Партия: {partiya}\n\n"
+                                    f"Количество проб {count}\n"
+                                    f"Количество не хватающих гранов {count_pust_gran}\n"
+                                    f"Количество не хватающих влажностей {count_pust_wlashn}\n"
+                                    f"Количество не хватающих плотностей {count_pust_plotn}\n\n"
+                                    f"Количество сделанной органики {count_org}\n"
+                                    f"Количество сделанной уделки {count_udelka}")
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
 
 
 if __name__ == '__main__':

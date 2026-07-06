@@ -693,6 +693,34 @@ class Database:
         conn.close()
         return df
 
+    def get_models_predskaz_part_by_id(self, party_id):
+        conn = self.get_connection()
+
+        query = """
+        SELECT p.lab_nomer, f.wlashn, f.ukol, f.plotn, 
+                g.gran_10,
+                g.gran_5_10,
+                g.gran_5_2,
+                g.gran_2_1,
+                g.gran_1_0_5,
+                g.gran_0_5_0_25,
+                g.gran_0_25_0_10,
+                g.gran_0_10_0_05,
+                g.gran_0_05_0_01,
+                g.gran_0_01_0_002,
+                g.gran_0_002
+        FROM probi p
+            LEFT JOIN fizika f on p.id = f.proba_id
+            LEFT JOIN grans g on p.id = g.proba_id
+        WHERE p.partiya_id = ?
+        """
+
+        # read_sql_query сам выполнит запрос и вернёт DataFrame
+        df = pd.read_sql_query(query, conn, params=(party_id,))
+
+        conn.close()
+        return df
+
 # db = Database("database.db")
 #
 # df = db.get_rashet_gran_part_by_id(15)
