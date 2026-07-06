@@ -46,6 +46,21 @@ def process_multiheader_column(col):
 
 
 def obrabotka_df_posle_zagr(df):
+    # 1. Валидация на дубли исходных lab_nomer (до ffill)
+    original_lab = df['lab_nomer']
+
+    # Игнорируем NaN, смотрим только на реальные значения
+    non_null_mask = original_lab.notna()
+    duplicated_mask = original_lab[non_null_mask].duplicated(keep=False)
+
+    if duplicated_mask.any():
+        duplicates = sorted(
+            original_lab[non_null_mask][duplicated_mask].unique().tolist()
+        )
+        raise ValueError(
+            f"Найдены дублирующиеся лабораторные номера: {duplicates}"
+        )
+
     df['lab_nomer'] = df['lab_nomer'].ffill(limit=1)
 
     df = df.dropna(subset=['lab_nomer'])
@@ -72,13 +87,13 @@ def zagr_tarirovki(path):
 
 
 def rashet_popravki_areometr(df_agg, df_tarirovk):
-    df_agg['popravka_t1'] = df_agg.apply(get_value1, axis=1, ref_df=df_tarirovk, col_temp='1_zamer/temp_last')
-    df_agg['popravka_t2'] = df_agg.apply(get_value1, axis=1, ref_df=df_tarirovk, col_temp='2_zamer/temp_last')
-    df_agg['popravka_t3'] = df_agg.apply(get_value1, axis=1, ref_df=df_tarirovk, col_temp='3_zamer/temp_last')
+    df_agg['popravka_t1'] = df_agg.apply(get_value1, axis=1, ref_df=df_tarirovk, col_temp='zamer_temp_1_last')
+    df_agg['popravka_t2'] = df_agg.apply(get_value1, axis=1, ref_df=df_tarirovk, col_temp='zamer_temp_2_last')
+    df_agg['popravka_t3'] = df_agg.apply(get_value1, axis=1, ref_df=df_tarirovk, col_temp='zamer_temp_3_last')
 
-    df_agg['zamer_1'] = df_agg['1_zamer/temp_first'] + df_agg['popravka_t1']
-    df_agg['zamer_2'] = df_agg['2_zamer/temp_first'] + df_agg['popravka_t2']
-    df_agg['zamer_3'] = df_agg['3_zamer/temp_first'] + df_agg['popravka_t3']
+    df_agg['zamer_1'] = df_agg['zamer_temp_1_first'] + df_agg['popravka_t1']
+    df_agg['zamer_2'] = df_agg['zamer_temp_2_first'] + df_agg['popravka_t2']
+    df_agg['zamer_3'] = df_agg['zamer_temp_3_first'] + df_agg['popravka_t3']
 
     return df_agg
 
@@ -101,32 +116,32 @@ def get_value1(row, ref_df, col_temp):
 def rashet_x1_x2_x3(df_agg, udelka):
     df_agg['udelka'] = udelka
 
-    df_agg['koef_K'] = (df_agg['gran_10_first'] + df_agg['gran_5-10_first'] + df_agg['gran_5-2_first'] + df_agg[
-        'gran_2-1_first'])
+    df_agg['koef_K'] = (df_agg['gran_10_first'] + df_agg['gran_5_10_first'] + df_agg['gran_5_2_first'] + df_agg[
+        'gran_2_1_first'])
 
-    # df_agg = df_agg.dropna(subset=['3_zamer/temp_first']).copy()
+    # df_agg = df_agg.dropna(subset=['zamer_temp_3_first']).copy()
 
     df_agg['X1'] = df_agg['udelka'] * df_agg['zamer_1'] / (df_agg['udelka'] - 1) / df_agg[
-        'kolba/naveska_last'] * (100 - df_agg['koef_K'])
+        'kolba_naveska_last'] * (100 - df_agg['koef_K'])
     df_agg['X2'] = df_agg['udelka'] * df_agg['zamer_2'] / (df_agg['udelka'] - 1) / df_agg[
-        'kolba/naveska_last'] * (100 - df_agg['koef_K'])
+        'kolba_naveska_last'] * (100 - df_agg['koef_K'])
     df_agg['X3'] = df_agg['udelka'] * df_agg['zamer_3'] / (df_agg['udelka'] - 1) / df_agg[
-        'kolba/naveska_last'] * (100 - df_agg['koef_K'])
+        'kolba_naveska_last'] * (100 - df_agg['koef_K'])
 
     return df_agg
 
 
 def itog_raschet_gran(df_agg):
-    df_agg['m_probi_bez_krupn'] = df_agg['kolba/naveska_last'] - df_agg[config.COLS_GRAN_KOEF_K].sum(axis=1)
+    df_agg['m_probi_bez_krupn'] = df_agg['kolba_naveska_last'] - df_agg[config.COLS_GRAN_KOEF_K].sum(axis=1)
 
-    df_agg['gran_10_%'] = df_agg['gran_10_first'] / df_agg['kolba/naveska_last'] * 100
-    df_agg['gran_5-10_%'] = df_agg['gran_5-10_first'] / df_agg['kolba/naveska_last'] * 100
-    df_agg['gran_5-2_%'] = df_agg['gran_5-2_first'] / df_agg['kolba/naveska_last'] * 100
-    df_agg['gran_2-1_%'] = df_agg['gran_2-1_first'] / df_agg['kolba/naveska_last'] * 100
+    df_agg['gran_10_%'] = df_agg['gran_10_first'] / df_agg['kolba_naveska_last'] * 100
+    df_agg['gran_5_10_%'] = df_agg['gran_5_10_first'] / df_agg['kolba_naveska_last'] * 100
+    df_agg['gran_5_2_%'] = df_agg['gran_5_2_first'] / df_agg['kolba_naveska_last'] * 100
+    df_agg['gran_2_1_%'] = df_agg['gran_2_1_first'] / df_agg['kolba_naveska_last'] * 100
 
-    df_agg['gran_1-0,5_%'] = df_agg['gran_1-0,5_first'] / df_agg['m_probi_bez_krupn'] * (100 - df_agg['koef_K'])
-    df_agg['gran_0,5-0,25_%'] = df_agg['gran_0,5-0,25_first'] / df_agg['m_probi_bez_krupn'] * (100 - df_agg['koef_K'])
-    df_agg['gran_0,25-0,10_%'] = df_agg['gran_0,25-0,10_first'] / df_agg['m_probi_bez_krupn'] * (100 - df_agg['koef_K'])
+    df_agg['gran_1_0_5_%'] = df_agg['gran_1_0_5_first'] / df_agg['m_probi_bez_krupn'] * (100 - df_agg['koef_K'])
+    df_agg['gran_0_5_0_25_%'] = df_agg['gran_0_5_0_25_first'] / df_agg['m_probi_bez_krupn'] * (100 - df_agg['koef_K'])
+    df_agg['gran_0_25_0_10_%'] = df_agg['gran_0_25_0_10_first'] / df_agg['m_probi_bez_krupn'] * (100 - df_agg['koef_K'])
 
     df_agg['gran_0.05-0.01_%'] = df_agg['X1'] - df_agg['X2']
     df_agg['gran_0.01-0.002_%'] = df_agg['X2'] - df_agg['X3']
@@ -164,6 +179,20 @@ def validate_no_missing(df: pd.DataFrame, cols: list[str]) -> None:
         
         rows_with_na = df[df[cols].isna().any(axis=1)]
 
+        spisok_lab = list(rows_with_na['lab_nomer'])
+
         raise ValueError(
-            f"В столбцах {cols} обнаружены пропуски. "
+            f"В столбцах {cols} обнаружены пропуски.\n"
+            f"Пробы с проблемами {spisok_lab}\n"
             f"Количество строк с пропусками: {len(rows_with_na)}")
+
+def vigruzka_namiv(df_agg):
+    df1 = df_agg[config.cols_1_stroka].rename(columns=config.columns_vigruzka_namiv1)
+    df1['index'] = 1
+    df2 = df_agg[config.cols_2_stroka].rename(columns=config.columns_vigruzka_namiv2)
+    df2['index'] = 2
+
+    result = pd.concat([df1, df2])
+    result = result.sort_values(by=["lab_nomer", "index"])
+
+    return result

@@ -91,6 +91,30 @@ class Database:
             );       
         """)
 
+        cursor.execute("""  
+            CREATE TABLE IF NOT EXISTS grans_raschet (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                proba_id                INTEGER NOT NULL,
+                kolba_naveska_first     REAL,
+                kolba_naveska_last      REAL,
+                areometr_first          REAL,
+                zamer_temp_1_first      REAL,
+                zamer_temp_1_last       REAL,
+                zamer_temp_2_first      REAL,
+                zamer_temp_2_last       REAL,
+                zamer_temp_3_first      REAL,
+                zamer_temp_3_last       REAL,
+                gran_10_first           REAL,
+                gran_5_10_first         REAL,
+                gran_5_2_first          REAL,
+                gran_2_1_first          REAL,
+                gran_1_0_5_first        REAL,
+                gran_0_5_0_25_first     REAL,
+                gran_0_25_0_10_first    REAL,
+                created_at              TEXT DEFAULT CURRENT_TIMESTAMP
+            );       
+        """)
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS fizika (
                 proba_id INTEGER PRIMARY KEY,
@@ -288,7 +312,7 @@ class Database:
 
             if df_merged['proba_id'].isna().any():
                 missing = df_merged.loc[df_merged['proba_id'].isna(), 'lab_nomer'].tolist()
-                raise ValueError(f'Не найдены proba_id для lab_nomer: {missing}')
+                raise ValueError(f'В базе данных нет лабораторных номеров: {missing}')
 
             df_to_save = df_merged[config.COLUMNS_GRAN_BD].copy()
 
@@ -398,6 +422,83 @@ class Database:
         finally:
             conn.close()
 
+    def save_grans_raschet_bulk_by_lab_nomer(self, df_raschet):
+        conn = self.get_connection()
+
+        try:
+            df_probi = pd.read_sql_query(
+                "SELECT id AS proba_id, lab_nomer FROM probi",
+                conn
+            )
+
+            df_merged = df_raschet.merge(df_probi, on='lab_nomer', how='left')
+
+            if df_merged['proba_id'].isna().any():
+                missing = df_merged.loc[df_merged['proba_id'].isna(), 'lab_nomer'].tolist()
+                raise ValueError(f'В базе данных нет лабораторных номеров: {missing}')
+
+            current_time = datetime.now().isoformat()
+
+            rows = [
+                (
+                    int(row.proba_id),
+                    row.kolba_naveska_first,
+                    row.kolba_naveska_last,
+                    row.areometr_first,
+                    row.zamer_temp_1_first,
+                    row.zamer_temp_1_last,
+                    row.zamer_temp_2_first,
+                    row.zamer_temp_2_last,
+                    row.zamer_temp_3_first,
+                    row.zamer_temp_3_last,
+                    row.gran_10_first,
+                    row.gran_5_10_first,
+                    row.gran_5_2_first,
+                    row.gran_2_1_first,
+                    row.gran_1_0_5_first,
+                    row.gran_0_5_0_25_first,
+                    row.gran_0_25_0_10_first,
+                    current_time
+                )
+                for row in df_merged.itertuples(index=False)
+            ]
+
+            cursor = conn.cursor()
+            conn.execute("BEGIN")
+
+            cursor.executemany("""
+                INSERT INTO grans_raschet (
+                    proba_id,
+                    kolba_naveska_first,
+                    kolba_naveska_last,
+                    areometr_first,
+                    zamer_temp_1_first,
+                    zamer_temp_1_last,
+                    zamer_temp_2_first,
+                    zamer_temp_2_last,
+                    zamer_temp_3_first,
+                    zamer_temp_3_last,
+                    gran_10_first,
+                    gran_5_10_first,
+                    gran_5_2_first,
+                    gran_2_1_first,
+                    gran_1_0_5_first,
+                    gran_0_5_0_25_first,
+                    gran_0_25_0_10_first,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows)
+
+            conn.commit()
+
+        except Exception:
+            conn.rollback()
+            raise
+
+        finally:
+            conn.close()
+
     def save_fizika_bulk_by_lab_nomer(self, df):
         conn = self.get_connection()
 
@@ -411,7 +512,7 @@ class Database:
 
             if df_merged['proba_id'].isna().any():
                 missing = df_merged[df_merged['proba_id'].isna()]['lab_nomer'].tolist()
-                raise ValueError(f'Не найдены proba_id для lab_nomer: {missing}')
+                raise ValueError(f'В базе данных нет лабораторных номеров: {missing}')
 
             columns = ['proba_id', 'ukol', 'opisanie_razbor', 'wlashn', 'plotn', 'udelka', 'organika']
             df_to_save = df_merged[columns].copy()
@@ -495,17 +596,16 @@ class Database:
         conn.close()
         return df
 
-    def get_poln_gran_data_by_party_id(self, party_id):
+    def get_poln_info_data_by_party_id(self, party_id):
         conn = self.get_connection()
 
         query = """
             SELECT 
-                p.lab_nomer AS proba_lab_nomer,
-                g.gran_10, g.gran_5_10, g.gran_5_2, g.gran_2_1, g.gran_1_0_5, g.gran_0_5_0_25,
-                g.gran_0_25_0_10, g.gran_0_10_0_05, g.gran_0_05_0_01, g.gran_0_01_0_002, g.gran_0_002
+            * 
             FROM probi p
-            LEFT JOIN grans g ON p.id = g.proba_id
-            WHERE p.partiya_id = ?
+                LEFT JOIN fizika f ON p.id = f.proba_id
+                LEFT JOIN grans g ON p.id = g.proba_id
+            WHERE p.partiya_id = ?;
         """
 
         # read_sql_query сам выполнит запрос и вернёт DataFrame
@@ -560,7 +660,48 @@ class Database:
         finally:
             conn.close()
 
+    def get_rashet_gran_part_by_id(self, party_id):
+        conn = self.get_connection()
+
+        query = """
+        SELECT
+            p.lab_nomer, 
+            g_r.kolba_naveska_first, 
+            g_r.kolba_naveska_last,
+            g_r.areometr_first,
+            g_r.zamer_temp_1_first,
+            g_r.zamer_temp_1_last,
+            g_r.zamer_temp_2_first,
+            g_r.zamer_temp_2_last,
+            g_r.zamer_temp_3_first,
+            g_r.zamer_temp_3_last,
+            g_r.gran_10_first,
+            g_r.gran_5_10_first,
+            g_r.gran_5_2_first,
+            g_r.gran_2_1_first,
+            g_r.gran_1_0_5_first,
+            g_r.gran_0_5_0_25_first,
+            g_r.gran_0_25_0_10_first
+        FROM grans_raschet g_r 
+        LEFT JOIN probi p ON p.id = g_r.proba_id
+        WHERE p.partiya_id = ?
+        """
+
+        # read_sql_query сам выполнит запрос и вернёт DataFrame
+        df = pd.read_sql_query(query, conn, params=(party_id,))
+
+        conn.close()
+        return df
+
 # db = Database("database.db")
+#
+# df = db.get_rashet_gran_part_by_id(15)
+# print(df)
+
+#
+# df = pd.read_excel("testik2.xlsx")
+#
+# db.save_grans_raschet_bulk_by_lab_nomer(df)
 
 #
 # rows = db.show_all_objects()

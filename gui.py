@@ -6,9 +6,10 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget,
                              QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QDialog)
 from PyQt5.QtCore import Qt
 import qdarkstyle
+from openpyxl import load_workbook
 from orkestrator_db import MainCore
 from gransostav import RaschetGranov
-from core import zagr_file, zagr_file2, zagr_tarirovki, obrabotka_df_posle_zagr, rashet_gran
+from core import zagr_file, zagr_file2, zagr_tarirovki, obrabotka_df_posle_zagr, rashet_gran, vigruzka_namiv
 import config
 
 
@@ -91,6 +92,8 @@ class MainWindow(QMainWindow):
 
         self.orkestr_db = MainCore('database.db')
 
+        self.df_partii = None
+
         self.initUI()
 
     def initUI(self):
@@ -153,9 +156,29 @@ class MainWindow(QMainWindow):
         self.btn5.clicked.connect(self.add_rab_svodn)
         hlayout2.addWidget(self.btn5)
 
+        self.btn6 = QPushButton("Получить все намывы по этой партии")
+        self.btn6.clicked.connect(self.get_namivs)
+        hlayout2.addWidget(self.btn6)
+
         self.info_label = QLabel()
         vlayout3.addWidget(self.info_label)
 
+        self.btn7 = QPushButton("Выгрузить в Excel отчет по партии")
+        self.btn7.clicked.connect(self.save_part_excel)
+        hlayout2.addWidget(self.btn7)
+
+
+    def save_part_excel(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить испытание",
+            f"Намыв.xlsx",
+            "Excel Files (*.xlsx *.xls)"
+        )
+        if not file_path:
+            return
+        
+        self.df_partii.to_excel()
 
     def add_rab_svodn(self):
         path_rab_svodn, _ = QFileDialog.getOpenFileName(
@@ -183,6 +206,53 @@ class MainWindow(QMainWindow):
             print(e)
             traceback.print_exc()
 
+    def get_namivs(self):
+        try:
+            item = self.list_widget2.currentItem()
+            if item:
+                # Получаем данные из Qt.UserRole (роль 0x100)
+                db_id = item.data(Qt.UserRole)
+                text = item.text()
+
+            df = self.orkestr_db.db_show.get_namivs(db_id)
+
+            result = vigruzka_namiv(df)
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Сохранить испытание",
+                f"Намыв_{text}.xlsx",
+                "Excel Files (*.xlsx *.xls)"
+            )
+            if not file_path:
+                return
+
+            result.to_excel(file_path)
+
+            wb = load_workbook(file_path)
+            ws = wb["Sheet1"]
+
+            # Какие столбцы объединять (по номеру колонки в Excel)
+            # Например, столбцы A и C
+            cols_to_merge = ["B", "D", "H", "I", "J", "K", "L", "M", "N"]
+
+            # Определяем последнюю строку
+            max_row = ws.max_row
+
+            # Объединяем по две строки: (1,2), (3,4), ...
+            for col in cols_to_merge:
+                row = 2  # 1-я строка — заголовки, начинаем со 2-й
+                while row <= max_row:
+                    # объединяем только если есть пара строк row и row+1
+                    if row + 1 <= max_row:
+                        ws.merge_cells(start_row=row, start_column=ws[col + str(row)].column,
+                                       end_row=row + 1, end_column=ws[col + str(row)].column)
+                    row += 2
+
+            wb.save(file_path)
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
 
 
     def add_namiv(self):
@@ -206,7 +276,10 @@ class MainWindow(QMainWindow):
 
             df = df_itog.rename(columns=config.cols_bd_rename)
 
+            df_rashet = df_agg[config.cols_bd_rashet]
+
             self.orkestr_db.db_add.add_gran_bd(df)
+            self.orkestr_db.db_add.add_gran_rashet_bd(df_rashet)
 
             QMessageBox.information(self, "Успех", f"Граны ({len(df_itog)} шт.) в базе данных")
 
@@ -270,10 +343,13 @@ class MainWindow(QMainWindow):
         partiya = item.text()
         db_id = item.data(Qt.UserRole)
 
-        df = self.orkestr_db.db_show.poln_grani_part(db_id)
+        self.df_partii = self.orkestr_db.db_show.poln_info_part(db_id)
 
-        count = len(df)
-        count_pust_gran = len(df[df.isna().any(axis=1)])
+        print(self.df_partii)
+        print(self.df_partii)
+
+        count = len(self.df_partii)
+        count_pust_gran = 99999
 
         self.info_label.setText(f"Выбрано: {object}, Партия: {partiya}\n"
                                 f"Количество проб {count}\n"

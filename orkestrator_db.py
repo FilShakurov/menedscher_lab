@@ -17,6 +17,10 @@ class ZagrVDatabase:
         # df = pd.read_excel(path)
         self.db.save_grans_bulk_by_lab_nomer(df)
 
+    def add_gran_rashet_bd(self, df_rashet):
+        # df = pd.read_excel(path)
+        self.db.save_grans_raschet_bulk_by_lab_nomer(df_rashet)
+
     def add_rab_svodnaya(self, df, id_partii):
         self.db.add_probi(df, id_partii)
         self.db.save_fizika_bulk_by_lab_nomer(df)
@@ -42,8 +46,8 @@ class ShowIzDatabase:
 
         return df
 
-    def poln_grani_part(self, partiya_id):
-        df = self.db.get_poln_gran_data_by_party_id(partiya_id)
+    def poln_info_part(self, partiya_id):
+        df = self.db.get_poln_info_data_by_party_id(partiya_id)
 
         return df
 
@@ -54,6 +58,11 @@ class ShowIzDatabase:
     def show_all_partii_object(self, object_id):
         rows = self.db.show_all_partii_by_object(object_id)
         return rows
+
+    def get_namivs(self, partiya_id):
+        df = self.db.get_rashet_gran_part_by_id(partiya_id)
+
+        return df
 
 
 
@@ -78,7 +87,7 @@ class MainCore:
 # core.db_show.show_grani_part_bd(1)
 # core.db_show.show_grani_part_bd(2)
 #
-# core.db_show.show_poln_grani_part_bd(1)
+# core.db_show.show_poln_info_part_bd(1)
 
 
 
