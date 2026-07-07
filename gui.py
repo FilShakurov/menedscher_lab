@@ -1,5 +1,6 @@
 import sys
 import traceback
+from pathlib import Path
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget,
                              QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QLineEdit,
@@ -13,7 +14,9 @@ from gransostav import RaschetGranov
 from core import zagr_file, zagr_file2, zagr_tarirovki, obrabotka_df_posle_zagr, rashet_gran, vigruzka_namiv
 import config
 from klasspredict import ClassPredict
+import re
 
+GROUP_DIR = Path(r"Y:\2026\Группа физических и механических испытаний")
 
 class NewQDialog(QDialog):
     def __init__(self, db, parent=None):
@@ -288,8 +291,8 @@ class MainWindow(QMainWindow):
             wb = load_workbook(file_path)
             ws = wb["Sheet1"]
 
-            # Какие столбцы объединять (по номеру колонки в Excel)
-            # Например, столбцы A и C
+            # объединять (по номеру колонки в Excel)
+            # Например,Какие столбцы  столбцы A и C
             cols_to_merge = ["B", "D", "H", "I", "J", "K", "L", "M", "N"]
 
             # Определяем последнюю строку
@@ -436,3 +439,4 @@ if __name__ == '__main__':
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
+    print('Jello')

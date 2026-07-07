@@ -196,3 +196,5 @@ def vigruzka_namiv(df_agg):
     result = result.sort_values(by=["lab_nomer", "index"])
 
     return result
+
+
