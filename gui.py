@@ -1,5 +1,7 @@
 import sys
+import os
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget,
@@ -15,6 +17,8 @@ from core import zagr_file, zagr_file2, zagr_tarirovki, obrabotka_df_posle_zagr,
 import config
 from klasspredict import ClassPredict
 import re
+import gran_sync
+from gran_report_dialog import GranReportDialog
 
 GROUP_DIR = Path(r"Y:\2026\Группа физических и механических испытаний")
 
@@ -179,6 +183,28 @@ class MainWindow(QMainWindow):
         self.btn8.clicked.connect(self.btn_calc)
         vlayout3.addWidget(self.btn8)
 
+        # --- Кнопки синхронизации и отчёта грансоставов ---
+        self.btn_sync_incr = QPushButton("🔄 Проверить обновления файлов")
+        self.btn_sync_incr.setToolTip(
+            "Обходит все сохранённые пути к файлам, сравнивает дату изменения.\n"
+            "Если файл изменился — добавляет новые данные без потери уже внесённых."
+        )
+        self.btn_sync_incr.clicked.connect(self.sync_files_incremental)
+        vlayout3.addWidget(self.btn_sync_incr)
+
+        self.btn_sync_full = QPushButton("⚠ Перепарсить файлы заново")
+        self.btn_sync_full.setToolTip(
+            "Полный перепарс всех файлов с перезаписью статусов.\n"
+            "Использовать, если нужно полностью обновить данные."
+        )
+        self.btn_sync_full.clicked.connect(self.sync_files_full)
+        vlayout3.addWidget(self.btn_sync_full)
+
+        self.btn_gran_report = QPushButton("📊 Отчёт грансоставов")
+        self.btn_gran_report.setToolTip("Открывает окно с фильтрами и статистикой по статусам грансостава")
+        self.btn_gran_report.clicked.connect(self.open_gran_report)
+        vlayout3.addWidget(self.btn_gran_report)
+
 
     def btn_calc(self):
         try:
@@ -241,29 +267,49 @@ class MainWindow(QMainWindow):
 
     def add_rab_svodn(self):
         path_rab_svodn, _ = QFileDialog.getOpenFileName(
-            self, "Выберите файл намыва", "", "Excel Files (*.xlsx *.xls)")
+            self, "Выберите файл рабочей сводной", "", "Excel Files (*.xlsx *.xls)")
         if not path_rab_svodn:
             return
 
+        item = self.list_widget2.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Внимание", "Сначала выберите партию в списке")
+            return
+        db_id = item.data(Qt.UserRole)
+
         try:
             df = zagr_file2(path_rab_svodn)
-
-            item = self.list_widget2.currentItem()
-            if item:
-                db_id = item.data(Qt.UserRole)
-                print(f"Данные из UserRole: {db_id}")
-            else:
-                print("Ничего не выбрано")
-
             self.orkestr_db.db_add.add_rab_svodnaya(df, db_id)
 
             df2 = RaschetGranov.zagr_excel(path_rab_svodn)
             df2 = RaschetGranov.raschet_gran_pesk(df2)
-
             self.orkestr_db.db_add.add_gran_bd(df2)
+
+            # --- Сохраняем путь к файлу и дату его изменения в БД ---
+            mtime_str = gran_sync.get_file_mtime_str(path_rab_svodn)
+
+            # Также парсим статусы грансоставов (монолит/нарушен) из файла
+            samples = gran_sync.parse_rab_svodn_excel(path_rab_svodn)
+            monoliths, disturbed = gran_sync.count_sample_types(samples)
+
+            self.orkestr_db.db.update_partii_file_info(
+                db_id, path_rab_svodn, mtime_str, monoliths, disturbed
+            )
+
+            # Записываем sample_type и начальные статусы грансоставов
+            if samples:
+                self.orkestr_db.db.update_probi_sample_type_and_status(db_id, samples)
+
+            QMessageBox.information(
+                self, "Успех",
+                f"Рабочая сводная загружена.\n"
+                f"Монолиты: {monoliths} шт. | Нарушены: {disturbed} шт.\n"
+                f"Путь к файлу сохранён в БД."
+            )
         except Exception as e:
             print(e)
             traceback.print_exc()
+            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить рабочую сводную: {e}")
 
     def get_namivs(self):
         try:
@@ -313,6 +359,44 @@ class MainWindow(QMainWindow):
             print(e)
             traceback.print_exc()
 
+
+    # --- Синхронизация файлов грансоставов ---
+
+    def sync_files_incremental(self):
+        """Инкрементальное обновление: проверяет изменение файлов и добавляет только новые данные."""
+        try:
+            result = gran_sync.sync_all_files(self.orkestr_db.db, full_rescan=False)
+            self.warning_box.setPlainText(result)
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка синхронизации: {e}")
+
+    def sync_files_full(self):
+        """Полный перепарс всех файлов с перезаписью статусов."""
+        reply = QMessageBox.question(
+            self,
+            "Подтверждение",
+            "Будут полностью перезаписаны статусы грансоставов для всех партий.\nПродолжить?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            result = gran_sync.sync_all_files(self.orkestr_db.db, full_rescan=True)
+            self.warning_box.setPlainText(result)
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка перепарса: {e}")
+
+    def open_gran_report(self):
+        """Открывает окно отчёта грансоставов."""
+        try:
+            dialog = GranReportDialog(self.orkestr_db.db.db_file, self)
+            dialog.exec_()
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть отчёт: {e}")
 
     def add_namiv(self):
         path_namiv, _ = QFileDialog.getOpenFileName(
