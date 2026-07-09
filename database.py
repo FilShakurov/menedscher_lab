@@ -17,34 +17,43 @@ class Database:
     def init_database(self):
         conn = self.get_connection()
         cursor = conn.cursor()
-
+#Добавил year - задается, а name_ilya - парсятся из названий папок на диске
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS objects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name_object TEXT NOT NULL UNIQUE,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                year INTEGER NOT NULL,
+                name_ilya TEXT UNIQUE NOT NULL
             )
         """)
-
+# Добавил party_number - последние цифры раб свод экселя,  monoliths_count, disturbed_count, file_path, last_modified
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS partii (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name_partii TEXT NOT NULL,
                 object_id INTEGER NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                party_number TEXT,
+                monoliths_count INTEGER DEFAULT 0,
+                disturbed_count INTEGER DEFAULT 0,
+                file_path TEXT UNIQUE,
+                last_modified TEXT,
                 
                 FOREIGN KEY(object_id) REFERENCES objects(id)
                     ON DELETE CASCADE
                 )
         """)
-
+#Добавил sample_type - монолит или нарушка, UNIQUE(partiya_id, lab_nomer) - чтобы избежать дублей
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS probi (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 lab_nomer TEXT NOT NULL UNIQUE,
                 partiya_id INTEGER NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-
+                sample_type = TEXT,
+                UNIQUE(partiya_id, lab_nomer),
+                
                 FOREIGN KEY(partiya_id) REFERENCES partii(id)
                     ON DELETE CASCADE
                 )
@@ -114,7 +123,7 @@ class Database:
                 created_at              TEXT DEFAULT CURRENT_TIMESTAMP
             );       
         """)
-
+#Добавил status_gran
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS fizika (
                 proba_id INTEGER PRIMARY KEY,
@@ -125,7 +134,8 @@ class Database:
                 udelka REAL,
                 organika REAL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-
+                status_gran TEXT DEFAULT 'Не назначен',
+                
                 FOREIGN KEY(proba_id) REFERENCES probi(id)
                     ON DELETE CASCADE
             )

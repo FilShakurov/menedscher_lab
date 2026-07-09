@@ -1,5 +1,13 @@
+from pathlib import Path
+from gransostav import RaschetGranov
 import pandas as pd
 import config
+import re
+import os
+import datetime
+from database import Database
+
+GROUP_DIR = Path(r"Y:\2026\Группа физических и механических испытаний")
 
 def zagr_file(path):
     df = pd.read_excel(path, skiprows=4, header=[0, 1, 2], na_values=["-", "26_", "27_"])
@@ -198,3 +206,33 @@ def vigruzka_namiv(df_agg):
     return result
 
 
+
+def add_rab_svodn(pathes_ab_svodn: list):
+
+    for path_rab_svodn in pathes_ab_svodn:
+        try:
+            df = zagr_file2(path_rab_svodn)
+
+            item = self.list_widget2.currentItem()
+            if item:
+                db_id = item.data(Qt.UserRole)
+                print(f"Данные из UserRole: {db_id}")
+            else:
+                print("Ничего не выбрано")
+
+            self.orkestr_db.db_add.add_rab_svodnaya(df, db_id)
+
+            df2 = RaschetGranov.zagr_excel(path_rab_svodn)
+            df2 = RaschetGranov.raschet_gran_pesk(df2)
+
+            self.orkestr_db.db_add.add_gran_bd(df2)
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+
+def sync_rab_svod():
+    conn = Database.get_connection()
+    cur = conn.cursor()
+    cur.execute(
+
+    )
