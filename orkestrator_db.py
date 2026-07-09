@@ -7,8 +7,8 @@ class ZagrVDatabase:
 
         self.db = db
 
-    def add_object_bd(self, name_object):
-        self.db.add_object(name_object)
+    def add_object_bd(self, name_object, year=None, name_ilya=None):
+        self.db.add_object(name_object, year=year, name_ilya=name_ilya)
 
     def add_partiya_bd(self, name_partii, id_object):
         self.db.add_partiya(name_partii, id_object)

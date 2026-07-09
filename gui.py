@@ -26,16 +26,20 @@ GROUP_DIR = Path(r"Y:\2026\Группа физических и механиче
 class NewQDialog(QDialog):
     def __init__(self, db, parent=None):
         super().__init__()
-        self.setWindowTitle("Доп окно")
-        self.resize(400, 400)
+        self.setWindowTitle("Добавить объект")
+        self.resize(400, 200)
 
         self.orkestr_db = db
 
         main_layout = QVBoxLayout(self)
 
-
-        self.lineedit = QLineEdit('')  # Поле ввода
+        main_layout.addWidget(QLabel("Название объекта:"))
+        self.lineedit = QLineEdit('')
         main_layout.addWidget(self.lineedit)
+
+        main_layout.addWidget(QLabel("Год:"))
+        self.year_edit = QLineEdit(str(datetime.now().year))
+        main_layout.addWidget(self.year_edit)
 
         self.btn = QPushButton("Добавить объект")
         self.btn.clicked.connect(self.btn_calc)
@@ -43,11 +47,19 @@ class NewQDialog(QDialog):
 
     def btn_calc(self):
         try:
-            text = self.lineedit.text()
-            self.orkestr_db.db_add.add_object_bd(text)
+            name = self.lineedit.text().strip()
+            if not name:
+                QMessageBox.warning(self, "Внимание", "Введите название объекта")
+                return
+            year_str = self.year_edit.text().strip()
+            year = int(year_str) if year_str.isdigit() else None
+            self.orkestr_db.db_add.add_object_bd(name, year=year)
+            QMessageBox.information(self, "Успех", f"Объект '{name}' добавлен.")
         except Exception as e:
             print(e)
             traceback.print_exc()
+            QMessageBox.critical(self, "Ошибка", str(e))
+
 
 
 class NewQDialog2(QDialog):
