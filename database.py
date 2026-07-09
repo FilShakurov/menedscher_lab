@@ -51,7 +51,7 @@ class Database:
                 lab_nomer TEXT NOT NULL UNIQUE,
                 partiya_id INTEGER NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                sample_type = TEXT,
+                sample_type TEXT,
                 UNIQUE(partiya_id, lab_nomer),
                 
                 FOREIGN KEY(partiya_id) REFERENCES partii(id)
@@ -141,9 +141,35 @@ class Database:
             )
         """)
 
+        # --- Безопасная миграция: добавляем колонки если их ещё нет ---
+        self._run_migration(conn)
+
         conn.commit()
         conn.close()
 
+    def _run_migration(self, conn):
+        """Добавляет отсутствующие колонки в существующие таблицы (идемпотентная миграция)."""
+        cursor = conn.cursor()
+        # Проверяем colонки таблицы partii
+        cursor.execute("PRAGMA table_info(partii)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+
+        if 'file_path' not in existing_cols:
+            cursor.execute("ALTER TABLE partii ADD COLUMN file_path TEXT")
+        if 'last_modified' not in existing_cols:
+            cursor.execute("ALTER TABLE partii ADD COLUMN last_modified TEXT")
+        if 'party_number' not in existing_cols:
+            cursor.execute("ALTER TABLE partii ADD COLUMN party_number TEXT")
+        if 'monoliths_count' not in existing_cols:
+            cursor.execute("ALTER TABLE partii ADD COLUMN monoliths_count INTEGER DEFAULT 0")
+        if 'disturbed_count' not in existing_cols:
+            cursor.execute("ALTER TABLE partii ADD COLUMN disturbed_count INTEGER DEFAULT 0")
+
+        # Проверяем колонки таблицы probi
+        cursor.execute("PRAGMA table_info(probi)")
+        existing_cols_probi = {row[1] for row in cursor.fetchall()}
+        if 'sample_type' not in existing_cols_probi:
+            cursor.execute("ALTER TABLE probi ADD COLUMN sample_type TEXT")
 
 
     """Методы для объекта"""
@@ -623,6 +649,171 @@ class Database:
 
         conn.close()
         return df
+
+    # --- Методы для работы с путями файлов партий и статусами грансоставов ---
+
+    def update_partii_file_info(self, partiya_id, file_path, last_modified, monoliths_count=None, disturbed_count=None):
+        """Сохраняет путь к файлу и дату его изменения для партии."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if monoliths_count is not None and disturbed_count is not None:
+                cursor.execute("""
+                    UPDATE partii
+                    SET file_path = ?, last_modified = ?, monoliths_count = ?, disturbed_count = ?
+                    WHERE id = ?
+                """, (file_path, last_modified, monoliths_count, disturbed_count, partiya_id))
+            else:
+                cursor.execute("""
+                    UPDATE partii
+                    SET file_path = ?, last_modified = ?
+                    WHERE id = ?
+                """, (file_path, last_modified, partiya_id))
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def update_partii_last_modified(self, partiya_id, last_modified):
+        """Обновляет дату последнего изменения файла партии."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE partii SET last_modified = ? WHERE id = ?",
+                (last_modified, partiya_id)
+            )
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_all_partii_with_files(self):
+        """Возвращает все партии, у которых сохранён путь к файлу."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT id, name_partii, file_path, last_modified, object_id
+                FROM partii
+                WHERE file_path IS NOT NULL AND file_path != ''
+            """)
+            return cursor.fetchall()
+        except sqlite3.Error:
+            raise
+        finally:
+            conn.close()
+
+    def get_probi_by_partii(self, partiya_id):
+        """Возвращает все пробы партии с их текущим статусом грансостава."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT p.id, p.lab_nomer, p.sample_type, f.status_gran
+                FROM probi p
+                LEFT JOIN fizika f ON p.id = f.proba_id
+                WHERE p.partiya_id = ?
+            """, (partiya_id,))
+            return cursor.fetchall()
+        except sqlite3.Error:
+            raise
+        finally:
+            conn.close()
+
+    def update_probi_sample_type_and_status(self, partiya_id, sample_updates):
+        """Обновляет sample_type в probi и status_gran в fizika для списка проб.
+        
+        sample_updates: список dict {lab_nomer, sample_type, status_gran}
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            conn.execute("BEGIN")
+            for s in sample_updates:
+                # Обновляем sample_type в probi
+                cursor.execute("""
+                    UPDATE probi SET sample_type = ?
+                    WHERE lab_nomer = ? AND partiya_id = ?
+                """, (s['sample_type'], s['lab_nomer'], partiya_id))
+
+                # Получаем proba_id
+                cursor.execute(
+                    "SELECT id FROM probi WHERE lab_nomer = ? AND partiya_id = ?",
+                    (s['lab_nomer'], partiya_id)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    continue
+                proba_id = row[0]
+
+                # Обновляем или вставляем статус в fizika
+                cursor.execute("""
+                    INSERT INTO fizika (proba_id, status_gran)
+                    VALUES (?, ?)
+                    ON CONFLICT(proba_id) DO UPDATE SET status_gran = excluded.status_gran
+                """, (proba_id, s['status_gran']))
+
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def update_probi_status_gran_incremental(self, partiya_id, status_updates):
+        """Инкрементально обновляет только УЛУЧШЕННЫЕ статусы (не откатывает назад).
+        
+        status_updates: список dict {lab_nomer, status_gran}
+        Порядок приоритета статусов (выше = лучше):
+          Промыв выполнен > Назначен на промыв > Намыт > Назначен на намыв > В ожидании намыва или промыва > Не назначен
+        """
+        STATUS_PRIORITY = {
+            'Не назначен': 0,
+            'В ожидании намыва или промыва': 1,
+            'Назначен на намыв': 2,
+            'Намыт': 3,
+            'Назначен на промыв': 4,
+            'Промыв выполнен': 5,
+        }
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            conn.execute("BEGIN")
+            for s in status_updates:
+                cursor.execute(
+                    "SELECT id FROM probi WHERE lab_nomer = ? AND partiya_id = ?",
+                    (s['lab_nomer'], partiya_id)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    continue
+                proba_id = row[0]
+
+                # Получаем текущий статус
+                cursor.execute("SELECT status_gran FROM fizika WHERE proba_id = ?", (proba_id,))
+                existing = cursor.fetchone()
+                current_status = existing[0] if existing else 'Не назначен'
+
+                new_status = s['status_gran']
+                # Обновляем только если новый статус «лучше» текущего
+                if STATUS_PRIORITY.get(new_status, 0) > STATUS_PRIORITY.get(current_status, 0):
+                    cursor.execute("""
+                        INSERT INTO fizika (proba_id, status_gran)
+                        VALUES (?, ?)
+                        ON CONFLICT(proba_id) DO UPDATE SET status_gran = excluded.status_gran
+                    """, (proba_id, new_status))
+
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def add_table(self):
         conn = self.get_connection()
