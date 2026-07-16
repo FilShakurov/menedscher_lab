@@ -74,20 +74,20 @@ class MainCore:
         self.db_show = ShowIzDatabase(self.db)
 
 
-# core = MainCore("database.db")
+# config_core = MainCore("database.db")
 #
-# core.db_add.add_object_bd("ВСЖМ-123")
+# config_core.db_add.add_object_bd("ВСЖМ-123")
 # #
-# core.db_add.add_partiya_bd("1 Партия", 2)
+# config_core.db_add.add_partiya_bd("1 Партия", 2)
 #
-# core.db_add.add_probi_bd("Пробы.xlsx", 3)
+# config_core.db_add.add_probi_bd("Пробы.xlsx", 3)
 
-# core.db_add.add_gran_bd("Граны2.xlsx")
+# config_core.db_add.add_gran_bd("Граны2.xlsx")
 #
-# core.db_show.show_grani_part_bd(1)
-# core.db_show.show_grani_part_bd(2)
+# config_core.db_show.show_grani_part_bd(1)
+# config_core.db_show.show_grani_part_bd(2)
 #
-# core.db_show.show_poln_info_part_bd(1)
+# config_core.db_show.show_poln_info_part_bd(1)
 
 
 

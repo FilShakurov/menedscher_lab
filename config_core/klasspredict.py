@@ -4,17 +4,15 @@ from joblib import load
 import pandas as pd
 import numpy as np
 import re
-import config
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
+from config_core import config
 
 
 class ClassPredict:
     @staticmethod
     def predict(df_table):
-        ukol_rf_path = os.path.join(app_dir(), "models/ukol_rf.joblib")
-        wlashn_lr_path = os.path.join(app_dir(), "models/wlashn_lr.joblib")
-        plotn_lr_path = os.path.join(app_dir(), "models/plotn_lr.joblib")
+        ukol_rf_path = os.path.join(app_dir(), "../models/ukol_rf.joblib")
+        wlashn_lr_path = os.path.join(app_dir(), "../models/wlashn_lr.joblib")
+        plotn_lr_path = os.path.join(app_dir(), "../models/plotn_lr.joblib")
 
         load_ukol_rf = load(ukol_rf_path)
         load_wlashn_lr = load(wlashn_lr_path)

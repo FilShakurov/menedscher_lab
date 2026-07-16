@@ -1,5 +1,4 @@
 import sys
-import os
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -14,10 +13,9 @@ import qdarkstyle
 from openpyxl import load_workbook
 from orkestrator_db import MainCore
 from gransostav import RaschetGranov
-from core import zagr_file, zagr_file2, zagr_tarirovki, obrabotka_df_posle_zagr, rashet_gran, vigruzka_namiv
-import config
-from klasspredict import ClassPredict
-import re
+from config_core.core import zagr_file, zagr_file2, zagr_tarirovki, obrabotka_df_posle_zagr, rashet_gran, vigruzka_namiv
+from config_core import config
+from config_core.klasspredict import ClassPredict
 import gran_sync
 from gran_report_dialog import GranReportDialog
 
@@ -417,7 +415,7 @@ class MainWindow(QMainWindow):
         if not path_namiv:
             return
 
-        path_tarirovki = "tarirovki.xlsx"
+        path_tarirovki = "excelki/tarirovki.xlsx"
 
         try:
             df = zagr_file(path_namiv)

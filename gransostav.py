@@ -1,6 +1,6 @@
 import pandas as pd
-import config
-from vspomogat_func import process_multiheader_column
+from config_core import config
+from config_core.vspomogat_func import process_multiheader_column
 
 
 class RaschetGranov:

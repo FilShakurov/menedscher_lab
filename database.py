@@ -1,7 +1,8 @@
 import sqlite3
 from datetime import datetime
 import pandas as pd
-import config
+from config_core import config
+
 
 class Database:
     def __init__(self, db_file):
