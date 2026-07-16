@@ -432,19 +432,23 @@ class MainWindow(QMainWindow):
             df_itog_unique = df_itog_unique.rename(columns=config.cols_bd_rename)
             df_rashet = df_unique[config.cols_bd_rashet]
 
-            df_itog_duplicates, spisok_otrizat_grani = rashet_gran(df_duplicates, df_tarirovk, udelka)
-
-            if spisok_otrizat_grani:
-                QMessageBox.warning(self, "Внимание", f"Есть отрицательные граны {spisok_otrizat_grani}")
-
-            df_itog_duplicates = df_itog_duplicates.rename(columns=config.cols_bd_rename)
-            df_rashet_dubli = df_duplicates[config.cols_bd_rashet]
-
             self.orkestr_db.db_add.add_gran_bd(df_itog_unique)
             self.orkestr_db.db_add.add_gran_rashet_bd(df_rashet)
 
-            self.orkestr_db.db_add.add_gran_bd(df_itog_duplicates)
-            self.orkestr_db.db_add.add_gran_rashet_bd(df_rashet_dubli)
+            if len(df_duplicates) > 0:
+
+                df_itog_duplicates, spisok_otrizat_grani = rashet_gran(df_duplicates, df_tarirovk, udelka)
+
+                if spisok_otrizat_grani:
+                    QMessageBox.warning(self, "Внимание", f"Есть отрицательные граны {spisok_otrizat_grani}")
+
+                df_itog_duplicates = df_itog_duplicates.rename(columns=config.cols_bd_rename)
+                df_rashet_dubli = df_duplicates[config.cols_bd_rashet]
+
+
+
+                self.orkestr_db.db_add.add_gran_bd(df_itog_duplicates)
+                self.orkestr_db.db_add.add_gran_rashet_bd(df_rashet_dubli)
 
             QMessageBox.information(self, "Успех",
                                     f"Граны ({len(df_unique)} шт.) в базе данных\n"

@@ -527,11 +527,11 @@ class Database:
             cursor = conn.cursor()
             conn.execute("BEGIN")
 
-            # Удаляем старые расчеты намыва для этих проб (чтобы перезаписать гран полностью)
-            proba_ids_to_delete = [row[0] for row in rows]
-            if proba_ids_to_delete:
-                placeholders = ','.join('?' * len(proba_ids_to_delete))
-                cursor.execute(f"DELETE FROM grans_raschet WHERE proba_id IN ({placeholders})", proba_ids_to_delete)
+            # # Удаляем старые расчеты намыва для этих проб (чтобы перезаписать гран полностью)
+            # proba_ids_to_delete = [row[0] for row in rows]
+            # if proba_ids_to_delete:
+            #     placeholders = ','.join('?' * len(proba_ids_to_delete))
+            #     cursor.execute(f"DELETE FROM grans_raschet WHERE proba_id IN ({placeholders})", proba_ids_to_delete)
 
             cursor.executemany("""
                 INSERT INTO grans_raschet (
