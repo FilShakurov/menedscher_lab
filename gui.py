@@ -180,7 +180,7 @@ class MainWindow(QMainWindow):
         vlayout3.addWidget(self.info_label)
 
         self.warning_box = QPlainTextEdit()
-        hlayout.addWidget(self.warning_box)
+        vlayout3.addWidget(self.warning_box)
 
         self.btn6 = QPushButton("Получить все намывы по этой партии")
         self.btn6.clicked.connect(self.get_namivs)
