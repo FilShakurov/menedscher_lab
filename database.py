@@ -17,14 +17,14 @@ class Database:
     def init_database(self):
         conn = self.get_connection()
         cursor = conn.cursor()
-#Добавил year - задается, а name_ilya - парсятся из названий папок на диске
+#Добавил year - задается (берётся из пути Y:\2026\...), а name_ilya - парсится из названий папок на диске
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS objects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name_object TEXT NOT NULL UNIQUE,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                year INTEGER NOT NULL,
-                name_ilya TEXT UNIQUE NOT NULL
+                year INTEGER,
+                name_ilya TEXT
             )
         """)
 # Добавил party_number - последние цифры раб свод экселя,  monoliths_count, disturbed_count, file_path, last_modified
@@ -150,7 +150,30 @@ class Database:
     def _run_migration(self, conn):
         """Добавляет отсутствующие колонки в существующие таблицы (идемпотентная миграция)."""
         cursor = conn.cursor()
-        # Проверяем colонки таблицы partii
+
+        # --- Миграция таблицы objects ---
+        # SQLite не позволяет DROP COLUMN NOT NULL напрямую, используем пересоздание таблицы
+        cursor.execute("PRAGMA table_info(objects)")
+        obj_cols = {row[1]: row[3] for row in cursor.fetchall()}  # name -> notnull
+        # Если year или name_ilya помечены NOT NULL — пересоздаём таблицу
+        if obj_cols.get('year', 0) == 1 or obj_cols.get('name_ilya', 0) == 1:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS objects_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name_object TEXT NOT NULL UNIQUE,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    year INTEGER,
+                    name_ilya TEXT
+                )
+            """)
+            cursor.execute("""
+                INSERT OR IGNORE INTO objects_new (id, name_object, created_at, year, name_ilya)
+                SELECT id, name_object, created_at, year, name_ilya FROM objects
+            """)
+            cursor.execute("DROP TABLE objects")
+            cursor.execute("ALTER TABLE objects_new RENAME TO objects")
+
+        # --- Миграция таблицы partii ---
         cursor.execute("PRAGMA table_info(partii)")
         existing_cols = {row[1] for row in cursor.fetchall()}
 
@@ -165,7 +188,7 @@ class Database:
         if 'disturbed_count' not in existing_cols:
             cursor.execute("ALTER TABLE partii ADD COLUMN disturbed_count INTEGER DEFAULT 0")
 
-        # Проверяем колонки таблицы probi
+        # --- Миграция таблицы probi ---
         cursor.execute("PRAGMA table_info(probi)")
         existing_cols_probi = {row[1] for row in cursor.fetchall()}
         if 'sample_type' not in existing_cols_probi:
@@ -173,7 +196,8 @@ class Database:
 
 
     """Методы для объекта"""
-    def add_object(self, name_object):
+    def add_object(self, name_object, year=None, name_ilya=None):
+        """Добавляет объект. year — год (напр. 2026), name_ilya — папка на диске."""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -181,9 +205,9 @@ class Database:
             current_time = datetime.now().isoformat()
 
             cursor.execute("""
-                INSERT INTO objects (name_object, created_at)
-                VALUES (?, ?)
-            """, (name_object, current_time))
+                INSERT INTO objects (name_object, created_at, year, name_ilya)
+                VALUES (?, ?, ?, ?)
+            """, (name_object, current_time, year, name_ilya))
 
             conn.commit()
 
@@ -502,6 +526,12 @@ class Database:
             cursor = conn.cursor()
             conn.execute("BEGIN")
 
+            # Удаляем старые расчеты намыва для этих проб (чтобы перезаписать гран полностью)
+            proba_ids_to_delete = [row[0] for row in rows]
+            if proba_ids_to_delete:
+                placeholders = ','.join('?' * len(proba_ids_to_delete))
+                cursor.execute(f"DELETE FROM grans_raschet WHERE proba_id IN ({placeholders})", proba_ids_to_delete)
+
             cursor.executemany("""
                 INSERT INTO grans_raschet (
                     proba_id,
@@ -776,9 +806,10 @@ class Database:
             'Не назначен': 0,
             'В ожидании намыва или промыва': 1,
             'Назначен на намыв': 2,
-            'Намыт': 3,
-            'Назначен на промыв': 4,
-            'Промыв выполнен': 5,
+            'Кр. р.': 3,
+            'Намыт': 4,
+            'Назначен на промыв': 5,
+            'Промыв выполнен': 6,
         }
         conn = self.get_connection()
         cursor = conn.cursor()
