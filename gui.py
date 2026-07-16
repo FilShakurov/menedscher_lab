@@ -1,4 +1,5 @@
 import sys
+import os
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -98,12 +99,64 @@ class NewQDialog2(QDialog):
                 print(f"Данные из UserRole: {db_id}")
             else:
                 print("Ничего не выбрано")
-            # object = self.list_widget1.currentData()
-            text = self.lineedit.text()
-            self.orkestr_db.db_add.add_partiya_bd(text, db_id)
+
+
+            path_rab_svodn, _ = QFileDialog.getOpenFileName(
+                self, "Выберите файл рабочей сводной", "", "Excel Files (*.xlsx *.xls)")
+            if not path_rab_svodn:
+                return
+
+            # Получаем только имя файла
+            file_name = os.path.basename(path_rab_svodn)
+
+            partiya_id = self.orkestr_db.db_add.add_partiya_bd(file_name, db_id)
+            print(partiya_id)
+
+
+
+            self.add_rab_svodn(path_rab_svodn, partiya_id)
+
         except Exception as e:
             print(e)
             traceback.print_exc()
+
+    def add_rab_svodn(self, path_rab_svodn, part_id):
+
+        db_id = part_id
+
+        try:
+            df = zagr_file2(path_rab_svodn)
+            self.orkestr_db.db_add.add_rab_svodnaya(df, db_id)
+
+            df2 = RaschetGranov.zagr_excel(path_rab_svodn)
+            df2 = RaschetGranov.raschet_gran_pesk(df2)
+            self.orkestr_db.db_add.add_gran_bd(df2)
+
+            # --- Сохраняем путь к файлу и дату его изменения в БД ---
+            mtime_str = gran_sync.get_file_mtime_str(path_rab_svodn)
+
+            # Также парсим статусы грансоставов (монолит/нарушен) из файла
+            samples = gran_sync.parse_rab_svodn_excel(path_rab_svodn)
+            monoliths, disturbed = gran_sync.count_sample_types(samples)
+
+            self.orkestr_db.db.update_partii_file_info(
+                db_id, path_rab_svodn, mtime_str, monoliths, disturbed
+            )
+
+            # Записываем sample_type и начальные статусы грансоставов
+            if samples:
+                self.orkestr_db.db.update_probi_sample_type_and_status(db_id, samples)
+
+            QMessageBox.information(
+                self, "Успех",
+                f"Рабочая сводная загружена.\n"
+                f"Монолиты: {monoliths} шт. | Нарушены: {disturbed} шт.\n"
+                f"Путь к файлу сохранён в БД."
+            )
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить рабочую сводную: {e}")
 
 
 class MainWindow(QMainWindow):
@@ -172,11 +225,11 @@ class MainWindow(QMainWindow):
         hlayout2 = QHBoxLayout()
         vlayout3.addLayout(hlayout2)
 
-        self.btn5 = QPushButton("Добавить рабочую сводную")
-        self.btn5.clicked.connect(self.add_rab_svodn)
-        hlayout2.addWidget(self.btn5)
+        # self.btn5 = QPushButton("Добавить рабочую сводную")
+        # self.btn5.clicked.connect(self.add_rab_svodn)
+        # hlayout2.addWidget(self.btn5)
 
-        self.info_label = QLabel()
+        self.info_label = QLabel("Отчет:")
         vlayout3.addWidget(self.info_label)
 
         self.warning_box = QPlainTextEdit()
@@ -276,51 +329,7 @@ class MainWindow(QMainWindow):
         
         self.df_partii.to_excel(file_path)
 
-    def add_rab_svodn(self):
-        path_rab_svodn, _ = QFileDialog.getOpenFileName(
-            self, "Выберите файл рабочей сводной", "", "Excel Files (*.xlsx *.xls)")
-        if not path_rab_svodn:
-            return
 
-        item = self.list_widget2.currentItem()
-        if not item:
-            QMessageBox.warning(self, "Внимание", "Сначала выберите партию в списке")
-            return
-        db_id = item.data(Qt.UserRole)
-
-        try:
-            df = zagr_file2(path_rab_svodn)
-            self.orkestr_db.db_add.add_rab_svodnaya(df, db_id)
-
-            df2 = RaschetGranov.zagr_excel(path_rab_svodn)
-            df2 = RaschetGranov.raschet_gran_pesk(df2)
-            self.orkestr_db.db_add.add_gran_bd(df2)
-
-            # --- Сохраняем путь к файлу и дату его изменения в БД ---
-            mtime_str = gran_sync.get_file_mtime_str(path_rab_svodn)
-
-            # Также парсим статусы грансоставов (монолит/нарушен) из файла
-            samples = gran_sync.parse_rab_svodn_excel(path_rab_svodn)
-            monoliths, disturbed = gran_sync.count_sample_types(samples)
-
-            self.orkestr_db.db.update_partii_file_info(
-                db_id, path_rab_svodn, mtime_str, monoliths, disturbed
-            )
-
-            # Записываем sample_type и начальные статусы грансоставов
-            if samples:
-                self.orkestr_db.db.update_probi_sample_type_and_status(db_id, samples)
-
-            QMessageBox.information(
-                self, "Успех",
-                f"Рабочая сводная загружена.\n"
-                f"Монолиты: {monoliths} шт. | Нарушены: {disturbed} шт.\n"
-                f"Путь к файлу сохранён в БД."
-            )
-        except Exception as e:
-            print(e)
-            traceback.print_exc()
-            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить рабочую сводную: {e}")
 
     def get_namivs(self):
         try:

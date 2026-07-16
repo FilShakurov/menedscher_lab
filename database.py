@@ -286,7 +286,10 @@ class Database:
                 VALUES (?, ?, ?)
             """, (name_partii, object_id, current_time))
 
+            partiya_id = cursor.lastrowid  # id вставленной строки
+
             conn.commit()
+            return partiya_id
         except sqlite3.Error:
             conn.rollback()
             raise

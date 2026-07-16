@@ -11,7 +11,9 @@ class ZagrVDatabase:
         self.db.add_object(name_object, year=year, name_ilya=name_ilya)
 
     def add_partiya_bd(self, name_partii, id_object):
-        self.db.add_partiya(name_partii, id_object)
+        partiya_id = self.db.add_partiya(name_partii, id_object)
+
+        return partiya_id
 
     def add_gran_bd(self, df):
         # df = pd.read_excel(path)
