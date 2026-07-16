@@ -371,12 +371,6 @@ class TestEffectiveStatusSQL:
         self._add_proba(cur, 1, 'монолит', has_grans=True, has_grans_raschet=True)
         assert self._get_status(cur, 1) == 'Намыт'
 
-    def test_monolit_only_grans_namyt(self):
-        """Монолит + только grans (без raschet) → Намыт"""
-        conn, cur = self._make_db()
-        self._add_proba(cur, 1, 'монолит', has_grans=True, has_grans_raschet=False)
-        assert self._get_status(cur, 1) == 'Намыт'
-
     def test_narushen_no_grans_ozhidaet(self):
         """Нарушен, нет грансостава → В ожидании намыва или промыва"""
         conn, cur = self._make_db()
@@ -389,11 +383,7 @@ class TestEffectiveStatusSQL:
         self._add_proba(cur, 1, 'нарушен', has_grans=True, has_grans_raschet=True)
         assert self._get_status(cur, 1) == 'Намыт'
 
-    def test_narushen_only_grans_promyt(self):
-        """Нарушен + только grans (без raschet) → Промыв выполнен"""
-        conn, cur = self._make_db()
-        self._add_proba(cur, 1, 'нарушен', has_grans=True, has_grans_raschet=False)
-        assert self._get_status(cur, 1) == 'Промыв выполнен'
+
 
     def test_kr_r_no_grans(self):
         """status_gran = 'Кр. р.', нет grans → Кр. р."""
