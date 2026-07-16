@@ -55,16 +55,16 @@ def obrabotka_df_posle_zagr(df):
     original_lab = df['lab_nomer']
 
     # Игнорируем NaN, смотрим только на реальные значения
-    non_null_mask = original_lab.notna()
-    duplicated_mask = original_lab[non_null_mask].duplicated(keep=False)
+    # non_null_mask = original_lab.notna()
+    # duplicated_mask = original_lab[non_null_mask].duplicated(keep=False)
 
-    if duplicated_mask.any():
-        duplicates = sorted(
-            original_lab[non_null_mask][duplicated_mask].unique().tolist()
-        )
-        raise ValueError(
-            f"Найдены дублирующиеся лабораторные номера: {duplicates}"
-        )
+    # if duplicated_mask.any():
+    #     duplicates = sorted(
+    #         original_lab[non_null_mask][duplicated_mask].unique().tolist()
+    #     )
+    #     raise ValueError(
+    #         f"Найдены дублирующиеся лабораторные номера: {duplicates}"
+    #     )
 
     df['lab_nomer'] = df['lab_nomer'].ffill(limit=1)
 
@@ -72,16 +72,31 @@ def obrabotka_df_posle_zagr(df):
 
     validate_no_missing(df, config.COLUMNS_OBYAZAT1)
 
-    df_agg = df.groupby('lab_nomer').agg({**config.agg_dict, **config.temp_agg})
+    df['row_in_group'] = df.groupby('lab_nomer').cumcount()
+
+    # номер пары (0, 1, 2, ...) – каждые две строки образуют пару
+    df['pair_id'] = df['row_in_group'] // 2
+
+    df = df.drop(columns=['row_in_group'])
+
+    df_agg = df.groupby(['lab_nomer', 'pair_id']).agg({**config.agg_dict, **config.temp_agg})
 
     df_agg.columns = [process_multiheader_column(col) for col in df_agg.columns]
     df_agg = df_agg.reset_index()
+
+    df_agg = df_agg.drop(columns=['pair_id'])
 
     df_agg[config.COLS_GRAN] = df_agg[config.COLS_GRAN].fillna(0)
 
     df_agg = df_agg.dropna(subset=['nomer_predv_first'])
 
-    return df_agg
+    # флаг: True для строк, которые являются дубликатами по lab_nomer
+    mask_dups = df_agg.duplicated(subset=['lab_nomer'], keep='last')  # last = оставить последнюю как основную
+
+    df_duplicates = df_agg[mask_dups].copy()  # лишние строки — в архив
+    df_unique = df_agg[~mask_dups].copy()
+
+    return df_unique, df_duplicates
 
 
 def zagr_tarirovki(path):

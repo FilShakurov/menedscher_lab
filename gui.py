@@ -349,7 +349,7 @@ class MainWindow(QMainWindow):
             ws = wb["Sheet1"]
 
             # объединять (по номеру колонки в Excel)
-            # Например,Какие столбцы  столбцы A и C
+            # Например, Какие столбцы  столбцы A и C
             cols_to_merge = ["B", "D", "H", "I", "J", "K", "L", "M", "N"]
 
             # Определяем последнюю строку
@@ -422,20 +422,37 @@ class MainWindow(QMainWindow):
             df_tarirovk = zagr_tarirovki(path_tarirovki)
             udelka = 2.7
 
-            df_agg = obrabotka_df_posle_zagr(df)
-            df_itog, spisok_otrizat_grani = rashet_gran(df_agg, df_tarirovk, udelka)
+            df_unique, df_duplicates  = obrabotka_df_posle_zagr(df)
+
+            df_itog_unique, spisok_otrizat_grani = rashet_gran(df_unique, df_tarirovk, udelka)
 
             if spisok_otrizat_grani:
                 QMessageBox.warning(self, "Внимание", f"Есть отрицательные граны {spisok_otrizat_grani}")
 
-            df = df_itog.rename(columns=config.cols_bd_rename)
+            df_itog_unique = df_itog_unique.rename(columns=config.cols_bd_rename)
+            df_rashet = df_unique[config.cols_bd_rashet]
 
-            df_rashet = df_agg[config.cols_bd_rashet]
-
-            self.orkestr_db.db_add.add_gran_bd(df)
+            self.orkestr_db.db_add.add_gran_bd(df_itog_unique)
             self.orkestr_db.db_add.add_gran_rashet_bd(df_rashet)
 
-            QMessageBox.information(self, "Успех", f"Граны ({len(df_itog)} шт.) в базе данных")
+            if len(df_duplicates) > 0:
+
+                df_itog_duplicates, spisok_otrizat_grani = rashet_gran(df_duplicates, df_tarirovk, udelka)
+
+                if spisok_otrizat_grani:
+                    QMessageBox.warning(self, "Внимание", f"Есть отрицательные граны {spisok_otrizat_grani}")
+
+                df_itog_duplicates = df_itog_duplicates.rename(columns=config.cols_bd_rename)
+                df_rashet_dubli = df_duplicates[config.cols_bd_rashet]
+
+
+
+                self.orkestr_db.db_add.add_gran_bd(df_itog_duplicates)
+                self.orkestr_db.db_add.add_gran_rashet_bd(df_rashet_dubli)
+
+            QMessageBox.information(self, "Успех",
+                                    f"Граны ({len(df_unique)} шт.) в базе данных\n"
+                                    f"Дубли {len(df_duplicates)}")
 
         except Exception as e:
             print(e)
