@@ -306,8 +306,18 @@ class GranReportDialog(QDialog):
             JOIN partii pa ON pa.id = pr.partiya_id
             JOIN objects o  ON o.id  = pa.object_id
             LEFT JOIN fizika       f  ON f.proba_id  = pr.id
-            LEFT JOIN grans        g  ON g.proba_id  = pr.id
-            LEFT JOIN grans_raschet gr ON gr.proba_id = pr.id
+            LEFT JOIN (
+                    SELECT * 
+                    FROM grans
+                    WHERE is_current = 1
+                )        
+                g  ON g.proba_id  = pr.id
+            LEFT JOIN (
+                    SELECT * 
+                    FROM grans_raschet
+                    WHERE is_current = 1
+                )
+                gr ON gr.proba_id = pr.id
             {where}
             GROUP BY eff_status
         """
@@ -319,8 +329,18 @@ class GranReportDialog(QDialog):
             JOIN partii pa ON pa.id = pr.partiya_id
             JOIN objects o  ON o.id  = pa.object_id
             LEFT JOIN fizika        f  ON f.proba_id  = pr.id
-            LEFT JOIN grans         g  ON g.proba_id  = pr.id
-            LEFT JOIN grans_raschet gr ON gr.proba_id = pr.id
+            LEFT JOIN (
+                    SELECT * 
+                    FROM grans
+                    WHERE is_current = 1
+                )        
+                g  ON g.proba_id  = pr.id
+            LEFT JOIN (
+                    SELECT * 
+                    FROM grans_raschet
+                    WHERE is_current = 1
+                )
+                gr ON gr.proba_id = pr.id
             {where}
             {"AND" if where else "WHERE"} (
                 {EFFECTIVE_STATUS_SQL}
@@ -335,8 +355,18 @@ class GranReportDialog(QDialog):
             JOIN partii pa ON pa.id = pr.partiya_id
             JOIN objects o  ON o.id  = pa.object_id
             LEFT JOIN fizika        f  ON f.proba_id  = pr.id
-            LEFT JOIN grans         g  ON g.proba_id  = pr.id
-            LEFT JOIN grans_raschet gr ON gr.proba_id = pr.id
+            LEFT JOIN (
+                    SELECT * 
+                    FROM grans
+                    WHERE is_current = 1
+                )        
+                g  ON g.proba_id  = pr.id
+            LEFT JOIN (
+                    SELECT * 
+                    FROM grans_raschet
+                    WHERE is_current = 1
+                )
+                gr ON gr.proba_id = pr.id
             {where}
             {"AND" if where else "WHERE"} (
                 {EFFECTIVE_STATUS_SQL}
@@ -362,6 +392,7 @@ class GranReportDialog(QDialog):
             bez_grana  = statuses.get('Без грана', 0)
             not_set    = statuses.get('Не назначен', 0)
             total      = sum(statuses.values())
+            print(statuses)
 
             # Обновляем карточки
             self._cards['Назначен на намыв'].set_count(namyv)

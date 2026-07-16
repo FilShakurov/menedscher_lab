@@ -62,7 +62,9 @@ class Database:
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS grans (
-                proba_id INTEGER PRIMARY KEY,
+                proba_id        INTEGER NOT NULL,
+                version         INTEGER NOT NULL,
+                is_current      INTEGER NOT NULL DEFAULT 0,
                 gran_10 REAL,
                 gran_5_10 REAL,
                 gran_5_2 REAL,
@@ -75,36 +77,21 @@ class Database:
                 gran_0_01_0_002 REAL,
                 gran_0_002 REAL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (proba_id, version)
             
                 FOREIGN KEY(proba_id) REFERENCES probi(id)
                     ON DELETE CASCADE
             )
         """)
 
-        cursor.execute("""  
-            CREATE TABLE IF NOT EXISTS grans_archive (
-                archive_id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                proba_id            INTEGER NOT NULL,
-                gran_10             REAL,
-                gran_5_10           REAL,
-                gran_5_2            REAL,
-                gran_2_1            REAL,
-                gran_1_0_5          REAL,
-                gran_0_5_0_25       REAL,
-                gran_0_25_0_10      REAL,
-                gran_0_10_0_05      REAL,
-                gran_0_05_0_01      REAL,
-                gran_0_01_0_002     REAL,
-                gran_0_002          REAL,
-                created_at          TEXT,
-                archived_at         TEXT NOT NULL
-            );       
-        """)
+
 
         cursor.execute("""  
             CREATE TABLE IF NOT EXISTS grans_raschet (
                 id                      INTEGER PRIMARY KEY AUTOINCREMENT,
                 proba_id                INTEGER NOT NULL,
+                version                 INTEGER DEFAULT 1,
+                is_current              INTEGER DEFAULT 1,
                 kolba_naveska_first     REAL,
                 kolba_naveska_last      REAL,
                 areometr_first          REAL,
@@ -121,10 +108,11 @@ class Database:
                 gran_1_0_5_first        REAL,
                 gran_0_5_0_25_first     REAL,
                 gran_0_25_0_10_first    REAL,
-                created_at              TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at              TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at              TEXT DEFAULT CURRENT_TIMESTAMP
             );       
         """)
-#Добавил status_gran
+        #Добавил status_gran
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS fizika (
                 proba_id INTEGER PRIMARY KEY,
@@ -402,7 +390,6 @@ class Database:
             conn.execute("BEGIN")
 
             cursor.execute("DROP TABLE IF EXISTS temp_grans_import")
-
             cursor.execute("""
                 CREATE TEMP TABLE temp_grans_import (
                     proba_id            INTEGER PRIMARY KEY,
@@ -423,55 +410,96 @@ class Database:
 
             cursor.executemany("""
                 INSERT INTO temp_grans_import (
-                    proba_id, gran_10, gran_5_10, gran_5_2, gran_2_1, gran_1_0_5,
-                    gran_0_5_0_25, gran_0_25_0_10, gran_0_10_0_05, gran_0_05_0_01,
-                    gran_0_01_0_002, gran_0_002, created_at
+                    proba_id,
+                    gran_10,
+                    gran_5_10,
+                    gran_5_2,
+                    gran_2_1,
+                    gran_1_0_5,
+                    gran_0_5_0_25,
+                    gran_0_25_0_10,
+                    gran_0_10_0_05,
+                    gran_0_05_0_01,
+                    gran_0_01_0_002,
+                    gran_0_002,
+                    created_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, rows)
 
+            cursor.execute("DROP TABLE IF EXISTS temp_grans_versioned")
             cursor.execute("""
-                INSERT INTO grans_archive (
-                    proba_id, gran_10, gran_5_10, gran_5_2, gran_2_1, gran_1_0_5,
-                    gran_0_5_0_25, gran_0_25_0_10, gran_0_10_0_05, gran_0_05_0_01,
-                    gran_0_01_0_002, gran_0_002, created_at, archived_at
-                )
+                CREATE TEMP TABLE temp_grans_versioned AS
                 SELECT
-                    g.proba_id, g.gran_10, g.gran_5_10, g.gran_5_2, g.gran_2_1, g.gran_1_0_5,
-                    g.gran_0_5_0_25, g.gran_0_25_0_10, g.gran_0_10_0_05, g.gran_0_05_0_01,
-                    g.gran_0_01_0_002, g.gran_0_002, g.created_at, ?
-                FROM grans g
-                INNER JOIN temp_grans_import t
-                    ON t.proba_id = g.proba_id
-            """, (current_time,))
+                    t.proba_id,
+                    t.gran_10,
+                    t.gran_5_10,
+                    t.gran_5_2,
+                    t.gran_2_1,
+                    t.gran_1_0_5,
+                    t.gran_0_5_0_25,
+                    t.gran_0_25_0_10,
+                    t.gran_0_10_0_05,
+                    t.gran_0_05_0_01,
+                    t.gran_0_01_0_002,
+                    t.gran_0_002,
+                    t.created_at,
+                    COALESCE((
+                        SELECT MAX(gv.version)
+                        FROM grans gv
+                        WHERE gv.proba_id = t.proba_id
+                    ), 0) + 1 AS new_version
+                FROM temp_grans_import t
+            """)
+
+            cursor.execute("""
+                UPDATE grans
+                SET is_current = 0
+                WHERE proba_id IN (
+                    SELECT proba_id
+                    FROM temp_grans_versioned
+                )
+                AND is_current = 1
+            """)
 
             cursor.execute("""
                 INSERT INTO grans (
-                    proba_id, gran_10, gran_5_10, gran_5_2, gran_2_1, gran_1_0_5,
-                    gran_0_5_0_25, gran_0_25_0_10, gran_0_10_0_05, gran_0_05_0_01,
-                    gran_0_01_0_002, gran_0_002, created_at
+                    proba_id,
+                    version,
+                    is_current,
+                    gran_10,
+                    gran_5_10,
+                    gran_5_2,
+                    gran_2_1,
+                    gran_1_0_5,
+                    gran_0_5_0_25,
+                    gran_0_25_0_10,
+                    gran_0_10_0_05,
+                    gran_0_05_0_01,
+                    gran_0_01_0_002,
+                    gran_0_002,
+                    created_at
                 )
                 SELECT
-                    proba_id, gran_10, gran_5_10, gran_5_2, gran_2_1, gran_1_0_5,
-                    gran_0_5_0_25, gran_0_25_0_10, gran_0_10_0_05, gran_0_05_0_01,
-                    gran_0_01_0_002, gran_0_002, created_at
-                FROM temp_grans_import
-                WHERE true
-                ON CONFLICT(proba_id) DO UPDATE SET
-                    gran_10 = excluded.gran_10,
-                    gran_5_10 = excluded.gran_5_10,
-                    gran_5_2 = excluded.gran_5_2,
-                    gran_2_1 = excluded.gran_2_1,
-                    gran_1_0_5 = excluded.gran_1_0_5,
-                    gran_0_5_0_25 = excluded.gran_0_5_0_25,
-                    gran_0_25_0_10 = excluded.gran_0_25_0_10,
-                    gran_0_10_0_05 = excluded.gran_0_10_0_05,
-                    gran_0_05_0_01 = excluded.gran_0_05_0_01,
-                    gran_0_01_0_002 = excluded.gran_0_01_0_002,
-                    gran_0_002 = excluded.gran_0_002,
-                    created_at = excluded.created_at
+                    proba_id,
+                    new_version,
+                    1,
+                    gran_10,
+                    gran_5_10,
+                    gran_5_2,
+                    gran_2_1,
+                    gran_1_0_5,
+                    gran_0_5_0_25,
+                    gran_0_25_0_10,
+                    gran_0_10_0_05,
+                    gran_0_05_0_01,
+                    gran_0_01_0_002,
+                    gran_0_002,
+                    created_at
+                FROM temp_grans_versioned
             """)
 
+            cursor.execute("DROP TABLE IF EXISTS temp_grans_versioned")
             cursor.execute("DROP TABLE IF EXISTS temp_grans_import")
 
             conn.commit()
@@ -499,10 +527,56 @@ class Database:
                 raise ValueError(f'В базе данных нет лабораторных номеров: {missing}')
 
             current_time = datetime.now().isoformat()
+            cursor = conn.cursor()
+            conn.execute("BEGIN")
 
-            rows = [
-                (
-                    int(row.proba_id),
+            for row in df_merged.itertuples(index=False):
+                proba_id = int(row.proba_id)
+
+                cursor.execute("""
+                    SELECT COALESCE(MAX(version), 0)
+                    FROM grans_raschet
+                    WHERE proba_id = ?
+                """, (proba_id,))
+                last_version = cursor.fetchone()[0]
+                new_version = last_version + 1
+
+                cursor.execute("""
+                    UPDATE grans_raschet
+                    SET is_current = 0,
+                        updated_at = ?
+                    WHERE proba_id = ? AND is_current = 1
+                """, (current_time, proba_id))
+
+                cursor.execute("""
+                    INSERT INTO grans_raschet (
+                        proba_id,
+                        version,
+                        is_current,
+                        kolba_naveska_first,
+                        kolba_naveska_last,
+                        areometr_first,
+                        zamer_temp_1_first,
+                        zamer_temp_1_last,
+                        zamer_temp_2_first,
+                        zamer_temp_2_last,
+                        zamer_temp_3_first,
+                        zamer_temp_3_last,
+                        gran_10_first,
+                        gran_5_10_first,
+                        gran_5_2_first,
+                        gran_2_1_first,
+                        gran_1_0_5_first,
+                        gran_0_5_0_25_first,
+                        gran_0_25_0_10_first,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    proba_id,
+                    new_version,
+                    1,
                     row.kolba_naveska_first,
                     row.kolba_naveska_last,
                     row.areometr_first,
@@ -519,43 +593,9 @@ class Database:
                     row.gran_1_0_5_first,
                     row.gran_0_5_0_25_first,
                     row.gran_0_25_0_10_first,
+                    current_time,
                     current_time
-                )
-                for row in df_merged.itertuples(index=False)
-            ]
-
-            cursor = conn.cursor()
-            conn.execute("BEGIN")
-
-            # # Удаляем старые расчеты намыва для этих проб (чтобы перезаписать гран полностью)
-            # proba_ids_to_delete = [row[0] for row in rows]
-            # if proba_ids_to_delete:
-            #     placeholders = ','.join('?' * len(proba_ids_to_delete))
-            #     cursor.execute(f"DELETE FROM grans_raschet WHERE proba_id IN ({placeholders})", proba_ids_to_delete)
-
-            cursor.executemany("""
-                INSERT INTO grans_raschet (
-                    proba_id,
-                    kolba_naveska_first,
-                    kolba_naveska_last,
-                    areometr_first,
-                    zamer_temp_1_first,
-                    zamer_temp_1_last,
-                    zamer_temp_2_first,
-                    zamer_temp_2_last,
-                    zamer_temp_3_first,
-                    zamer_temp_3_last,
-                    gran_10_first,
-                    gran_5_10_first,
-                    gran_5_2_first,
-                    gran_2_1_first,
-                    gran_1_0_5_first,
-                    gran_0_5_0_25_first,
-                    gran_0_25_0_10_first,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, rows)
+                ))
 
             conn.commit()
 
@@ -671,7 +711,12 @@ class Database:
             * 
             FROM probi p
                 LEFT JOIN fizika f ON p.id = f.proba_id
-                LEFT JOIN grans g ON p.id = g.proba_id
+                LEFT JOIN (
+                    SELECT * 
+                    FROM grans
+                    WHERE is_current = 1
+                ) g 
+                    ON p.id = g.proba_id
             WHERE p.partiya_id = ?;
         """
 
@@ -842,38 +887,6 @@ class Database:
 
             conn.commit()
         except sqlite3.Error:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
-
-    def add_table(self):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute("""  
-                CREATE TABLE IF NOT EXISTS grans_archive (
-                    archive_id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    proba_id            INTEGER NOT NULL,
-                    gran_10             REAL,
-                    gran_5_10           REAL,
-                    gran_5_2            REAL,
-                    gran_2_1            REAL,
-                    gran_1_0_5          REAL,
-                    gran_0_5_0_25       REAL,
-                    gran_0_25_0_10      REAL,
-                    gran_0_10_0_05      REAL,
-                    gran_0_05_0_01      REAL,
-                    gran_0_01_0_002     REAL,
-                    gran_0_002          REAL,
-                    created_at          TEXT,
-                    archived_at         TEXT NOT NULL
-                );       
-            """)
-            conn.commit()
-
-        except Exception:
             conn.rollback()
             raise
         finally:
