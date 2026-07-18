@@ -8,7 +8,7 @@ from pathlib import Path
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget,
                              QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QLineEdit,
                              QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
-                             QDialog, QPlainTextEdit)
+                             QDialog, QPlainTextEdit, QStackedWidget)
 from PyQt5.QtCore import Qt
 import qdarkstyle
 from openpyxl import load_workbook
@@ -60,47 +60,27 @@ class NewQDialog(QDialog):
             QMessageBox.critical(self, "Ошибка", str(e))
 
 
-
 class NewQDialog2(QDialog):
-    def __init__(self, db, parent=None):
-        super().__init__()
-        self.setWindowTitle("Доп окно")
-        self.resize(400, 400)
+    """Добавление новой партии в объект, уже выбранный на шаге 1 мастера."""
+
+    def __init__(self, db, object_id, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Добавить партию")
+        self.resize(420, 150)
 
         self.orkestr_db = db
+        self.object_id = object_id
 
         main_layout = QVBoxLayout(self)
 
-        self.list_widget1 = QListWidget()
-        rows = self.orkestr_db.db_show.show_all_objects()
-        for row in rows:
-            item = QListWidgetItem(row["name_object"])
-            # Сохраняем ID из БД в роли UserRole (или любой другой роли)
-            item.setData(Qt.UserRole, row["id"])
-            self.list_widget1.addItem(item)
+        main_layout.addWidget(QLabel("Выберите файл рабочей сводной для новой партии:"))
 
-        main_layout.addWidget(self.list_widget1)
-
-        self.lineedit = QLineEdit('')  # Поле ввода
-        main_layout.addWidget(self.lineedit)
-
-        self.btn = QPushButton("Добавить партию")
+        self.btn = QPushButton("Выбрать файл и добавить партию")
         self.btn.clicked.connect(self.btn_calc)
         main_layout.addWidget(self.btn)
 
     def btn_calc(self):
         try:
-            item = self.list_widget1.currentItem()
-
-            if item:
-                # Получаем данные из Qt.UserRole (роль 0x100)
-                db_id = item.data(Qt.UserRole)
-
-                print(f"Данные из UserRole: {db_id}")
-            else:
-                print("Ничего не выбрано")
-
-
             path_rab_svodn, _ = QFileDialog.getOpenFileName(
                 self, "Выберите файл рабочей сводной", "", "Excel Files (*.xlsx *.xls)")
             if not path_rab_svodn:
@@ -109,12 +89,11 @@ class NewQDialog2(QDialog):
             # Получаем только имя файла
             file_name = os.path.basename(path_rab_svodn)
 
-            partiya_id = self.orkestr_db.db_add.add_partiya_bd(file_name, db_id)
-            print(partiya_id)
-
-
+            partiya_id = self.orkestr_db.db_add.add_partiya_bd(file_name, self.object_id)
 
             self.add_rab_svodn(path_rab_svodn, partiya_id)
+
+            self.accept()
 
         except Exception as e:
             print(e)
@@ -166,32 +145,75 @@ class MainWindow(QMainWindow):
         self.orkestr_db = MainCore('database.db')
 
         self.df_partii = None
+        self.current_object_id = None
+        self.current_object_name = None
 
         self.initUI()
 
     def initUI(self):
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 900, 650)
         self.setWindowTitle('Шаблон')
 
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout()
-        central_widget.setLayout(main_layout)
+        self.stack = QStackedWidget()
+        self.setCentralWidget(self.stack)
 
-        hlayout_1 = QHBoxLayout()
-        main_layout.addLayout(hlayout_1)
+        self.stack.addWidget(self._build_object_page())    # index 0 — шаг 1
+        self.stack.addWidget(self._build_partiya_page())   # index 1 — шаг 2
 
-        self.btn_namiv = QPushButton("Добавить намыв")
-        self.btn_namiv.clicked.connect(self.add_namiv)
-        hlayout_1.addWidget(self.btn_namiv)
+        self.reload_objects()
+        self.stack.setCurrentIndex(0)
 
-        hlayout = QHBoxLayout()
-        main_layout.addLayout(hlayout)
+    # ------------------------------------------------------------------
+    # Шаг 1 — выбор объекта
+    # ------------------------------------------------------------------
+    def _build_object_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
 
-        vlayout1 = QVBoxLayout()
-        hlayout.addLayout(vlayout1)
+        title = QLabel("Шаг 1 — выберите объект")
+        title.setStyleSheet("font-weight: bold; font-size: 14px;")
+        layout.addWidget(title)
 
         self.list_widget1 = QListWidget()
+        self.list_widget1.itemDoubleClicked.connect(self._on_object_chosen)
+        layout.addWidget(self.list_widget1)
+
+        hlayout = QHBoxLayout()
+        layout.addLayout(hlayout)
+
+        self.btn_add_object = QPushButton("Добавить объект")
+        self.btn_add_object.clicked.connect(self.add_object)
+        hlayout.addWidget(self.btn_add_object)
+
+        self.btn_next = QPushButton("Далее →")
+        self.btn_next.clicked.connect(self._go_to_partiya_step)
+        hlayout.addWidget(self.btn_next)
+
+        return page
+
+    def _on_object_chosen(self, item):
+        self.list_widget1.setCurrentItem(item)
+        self._go_to_partiya_step()
+
+    def _go_to_partiya_step(self):
+        item = self.list_widget1.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Внимание", "Выберите объект из списка")
+            return
+
+        self.current_object_id = item.data(Qt.UserRole)
+        self.current_object_name = item.text()
+        self.df_partii = None
+
+        self.lbl_current_object.setText(f"Объект: {self.current_object_name}")
+        self.info_label.setText("Отчет:")
+        self.warning_box.clear()
+        self.reload_partii()
+
+        self.stack.setCurrentIndex(1)
+
+    def reload_objects(self):
+        self.list_widget1.clear()
         rows = self.orkestr_db.db_show.show_all_objects()
         for row in rows:
             item = QListWidgetItem(row["name_object"])
@@ -199,13 +221,40 @@ class MainWindow(QMainWindow):
             item.setData(Qt.UserRole, row["id"])
             self.list_widget1.addItem(item)
 
-        self.list_widget1.itemClicked.connect(self.on_item_clicked1)
-        self.list_widget1.setFixedWidth(200)
-        vlayout1.addWidget(self.list_widget1)
+    def add_object(self):
+        try:
+            dialog = NewQDialog(self.orkestr_db, self)
+            dialog.exec_()
+            self.reload_objects()
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
 
-        self.btn = QPushButton("Добавить объект")
-        self.btn.clicked.connect(self.add_object)
-        vlayout1.addWidget(self.btn)
+    # ------------------------------------------------------------------
+    # Шаг 2 — работа с партиями выбранного объекта
+    # ------------------------------------------------------------------
+    def _build_partiya_page(self):
+        page = QWidget()
+        main_layout = QVBoxLayout(page)
+
+        header = QHBoxLayout()
+        main_layout.addLayout(header)
+
+        self.btn_back = QPushButton("← Назад к объектам")
+        self.btn_back.clicked.connect(self._go_back_to_objects)
+        header.addWidget(self.btn_back)
+
+        self.lbl_current_object = QLabel("Объект:")
+        self.lbl_current_object.setStyleSheet("font-weight: bold; font-size: 14px;")
+        header.addWidget(self.lbl_current_object)
+        header.addStretch()
+
+        self.btn_namiv = QPushButton("Добавить намыв")
+        self.btn_namiv.clicked.connect(self.add_namiv)
+        header.addWidget(self.btn_namiv)
+
+        hlayout = QHBoxLayout()
+        main_layout.addLayout(hlayout)
 
         vlayout2 = QVBoxLayout()
         hlayout.addLayout(vlayout2)
@@ -221,13 +270,6 @@ class MainWindow(QMainWindow):
 
         vlayout3 = QVBoxLayout()
         hlayout.addLayout(vlayout3)
-
-        hlayout2 = QHBoxLayout()
-        vlayout3.addLayout(hlayout2)
-
-        # self.btn5 = QPushButton("Добавить рабочую сводную")
-        # self.btn5.clicked.connect(self.add_rab_svodn)
-        # hlayout2.addWidget(self.btn5)
 
         self.info_label = QLabel("Отчет:")
         vlayout3.addWidget(self.info_label)
@@ -269,6 +311,35 @@ class MainWindow(QMainWindow):
         self.btn_gran_report.clicked.connect(self.open_gran_report)
         vlayout3.addWidget(self.btn_gran_report)
 
+        return page
+
+    def _go_back_to_objects(self):
+        self.current_object_id = None
+        self.current_object_name = None
+        self.df_partii = None
+        self.reload_objects()
+        self.stack.setCurrentIndex(0)
+
+    def reload_partii(self):
+        self.list_widget2.clear()
+        if self.current_object_id is None:
+            return
+        rows = self.orkestr_db.db_show.show_all_partii_object(self.current_object_id)
+        for row in rows:
+            item = QListWidgetItem(row["name_partii"])
+            item.setData(Qt.UserRole, row["id"])
+            self.list_widget2.addItem(item)
+
+    def add_partiya(self):
+        if self.current_object_id is None:
+            return
+        try:
+            dialog = NewQDialog2(self.orkestr_db, self.current_object_id, self)
+            dialog.exec_()
+            self.reload_partii()
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
 
     def btn_calc(self):
         try:
@@ -326,7 +397,7 @@ class MainWindow(QMainWindow):
         )
         if not file_path:
             return
-        
+
         self.df_partii.to_excel(file_path)
 
 
@@ -466,65 +537,14 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Рабочий журнал не получилось добавить: {e}")
             traceback.print_exc()
 
-
-
-    def add_object(self):
-        try:
-            dialog = NewQDialog(self.orkestr_db, self)
-            dialog.exec_()
-
-            self.list_widget1.clear()
-            rows = self.orkestr_db.db_show.show_all_objects()
-            for row in rows:
-                item = QListWidgetItem(row["name_object"])
-                item.setData(Qt.UserRole, row["id"])
-                self.list_widget1.addItem(item)
-        except Exception as e:
-            print(e)
-            traceback.print_exc()
-
-    def add_partiya(self):
-        try:
-            dialog = NewQDialog2(self.orkestr_db, self)
-            dialog.exec_()
-
-            # self.list_widget2.clear()
-            # rows = self.orkestr_db.db_show.show_all_partii_object(db_id)
-            # for row in rows:
-            #     item = QListWidgetItem(row["name_partii"])
-            #     item.setData(Qt.UserRole, row["id"])
-            #     self.list_widget2.addItem(item)
-        except Exception as e:
-            print(e)
-            traceback.print_exc()
-
-    def on_item_clicked1(self, item):
-        try:
-            db_id = item.data(Qt.UserRole)
-            object = item.text()
-
-            self.list_widget2.clear()
-            rows = self.orkestr_db.db_show.show_all_partii_object(db_id)
-            for row in rows:
-                item = QListWidgetItem(row["name_partii"])
-                item.setData(Qt.UserRole, row["id"])
-                self.list_widget2.addItem(item)
-
-
-
-            self.info_label.setText(f"Выбран объект: {object}")
-        except Exception as e:
-            print(e)
-
     def on_item_clicked2(self, item):
         try:
-            object = self.list_widget1.currentItem().text()
+            object_name = self.current_object_name
             partiya = item.text()
             db_id = item.data(Qt.UserRole)
 
             self.df_partii = self.orkestr_db.db_show.poln_info_part(db_id)
 
-            print(self.df_partii)
             print(self.df_partii)
 
             count = len(self.df_partii)
@@ -540,7 +560,7 @@ class MainWindow(QMainWindow):
             mask_udelka = self.df_partii['udelka'].notna()
             count_udelka = mask_udelka.sum()
 
-            self.info_label.setText(f"Выбрано: {object}, Партия: {partiya}\n\n"
+            self.info_label.setText(f"Выбрано: {object_name}, Партия: {partiya}\n\n"
                                     f"Количество проб {count}\n"
                                     f"Количество не хватающих гранов {count_pust_gran}\n"
                                     f"Количество не хватающих влажностей {count_pust_wlashn}\n"
