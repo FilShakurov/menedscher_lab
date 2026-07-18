@@ -870,6 +870,29 @@ class Database:
         conn.close()
         return df
 
+    def get_probi_data_by_object_id(self, object_id):
+        """Возвращает df со всеми пробами объекта (по всем его партиям) — для расчёта статистики в pandas."""
+        conn = self.get_connection()
+
+        query = """
+            SELECT
+                p.id AS proba_id,
+                p.lab_nomer,
+                p.sample_type,
+                p.partiya_id,
+                pt.name_partii,
+                f.status_gran
+            FROM probi p
+                JOIN partii pt ON p.partiya_id = pt.id
+                LEFT JOIN fizika f ON p.id = f.proba_id
+            WHERE pt.object_id = ?;
+        """
+
+        df = pd.read_sql_query(query, conn, params=(object_id,))
+
+        conn.close()
+        return df
+
     # --- Методы для работы с путями файлов партий и статусами грансоставов ---
 
     def update_partii_file_info(self, partiya_id, file_path, last_modified, monoliths_count=None, disturbed_count=None):

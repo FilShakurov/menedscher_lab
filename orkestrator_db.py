@@ -61,6 +61,10 @@ class ShowIzDatabase:
         rows = self.db.show_all_partii_by_object(object_id)
         return rows
 
+    def get_probi_by_object(self, object_id):
+        df = self.db.get_probi_data_by_object_id(object_id)
+        return df
+
     def get_namivs(self, partiya_id):
         df = self.db.get_rashet_gran_part_by_id(partiya_id)
 
