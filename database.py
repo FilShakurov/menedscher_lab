@@ -453,6 +453,20 @@ class Database:
                         WHERE gv.proba_id = t.proba_id
                     ), 0) + 1 AS new_version
                 FROM temp_grans_import t
+                LEFT JOIN grans cur
+                    ON cur.proba_id = t.proba_id AND cur.is_current = 1
+                WHERE cur.proba_id IS NULL
+                   OR t.gran_10          IS NOT cur.gran_10
+                   OR t.gran_5_10        IS NOT cur.gran_5_10
+                   OR t.gran_5_2         IS NOT cur.gran_5_2
+                   OR t.gran_2_1         IS NOT cur.gran_2_1
+                   OR t.gran_1_0_5       IS NOT cur.gran_1_0_5
+                   OR t.gran_0_5_0_25    IS NOT cur.gran_0_5_0_25
+                   OR t.gran_0_25_0_10   IS NOT cur.gran_0_25_0_10
+                   OR t.gran_0_10_0_05   IS NOT cur.gran_0_10_0_05
+                   OR t.gran_0_05_0_01   IS NOT cur.gran_0_05_0_01
+                   OR t.gran_0_01_0_002  IS NOT cur.gran_0_01_0_002
+                   OR t.gran_0_002       IS NOT cur.gran_0_002
             """)
 
             cursor.execute("""
@@ -529,57 +543,21 @@ class Database:
                 missing = df_merged.loc[df_merged['proba_id'].isna(), 'lab_nomer'].tolist()
                 raise ValueError(f'В базе данных нет лабораторных номеров: {missing}')
 
+            df_to_save = df_merged[[
+                'proba_id',
+                'kolba_naveska_first', 'kolba_naveska_last', 'areometr_first',
+                'zamer_temp_1_first', 'zamer_temp_1_last',
+                'zamer_temp_2_first', 'zamer_temp_2_last',
+                'zamer_temp_3_first', 'zamer_temp_3_last',
+                'gran_10_first', 'gran_5_10_first', 'gran_5_2_first', 'gran_2_1_first',
+                'gran_1_0_5_first', 'gran_0_5_0_25_first', 'gran_0_25_0_10_first',
+            ]].copy()
+
             current_time = datetime.now().isoformat()
-            cursor = conn.cursor()
-            conn.execute("BEGIN")
 
-            for row in df_merged.itertuples(index=False):
-                proba_id = int(row.proba_id)
-
-                cursor.execute("""
-                    SELECT COALESCE(MAX(version), 0)
-                    FROM grans_raschet
-                    WHERE proba_id = ?
-                """, (proba_id,))
-                last_version = cursor.fetchone()[0]
-                new_version = last_version + 1
-
-                cursor.execute("""
-                    UPDATE grans_raschet
-                    SET is_current = 0,
-                        updated_at = ?
-                    WHERE proba_id = ? AND is_current = 1
-                """, (current_time, proba_id))
-
-                cursor.execute("""
-                    INSERT INTO grans_raschet (
-                        proba_id,
-                        version,
-                        is_current,
-                        kolba_naveska_first,
-                        kolba_naveska_last,
-                        areometr_first,
-                        zamer_temp_1_first,
-                        zamer_temp_1_last,
-                        zamer_temp_2_first,
-                        zamer_temp_2_last,
-                        zamer_temp_3_first,
-                        zamer_temp_3_last,
-                        gran_10_first,
-                        gran_5_10_first,
-                        gran_5_2_first,
-                        gran_2_1_first,
-                        gran_1_0_5_first,
-                        gran_0_5_0_25_first,
-                        gran_0_25_0_10_first,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    proba_id,
-                    new_version,
-                    1,
+            rows = [
+                (
+                    int(row.proba_id),
                     row.kolba_naveska_first,
                     row.kolba_naveska_last,
                     row.areometr_first,
@@ -596,9 +574,172 @@ class Database:
                     row.gran_1_0_5_first,
                     row.gran_0_5_0_25_first,
                     row.gran_0_25_0_10_first,
-                    current_time,
                     current_time
-                ))
+                )
+                for row in df_to_save.itertuples(index=False)
+            ]
+
+            cursor = conn.cursor()
+            conn.execute("BEGIN")
+
+            cursor.execute("DROP TABLE IF EXISTS temp_raschet_import")
+            cursor.execute("""
+                CREATE TEMP TABLE temp_raschet_import (
+                    proba_id                INTEGER PRIMARY KEY,
+                    kolba_naveska_first     REAL,
+                    kolba_naveska_last      REAL,
+                    areometr_first          REAL,
+                    zamer_temp_1_first      REAL,
+                    zamer_temp_1_last       REAL,
+                    zamer_temp_2_first      REAL,
+                    zamer_temp_2_last       REAL,
+                    zamer_temp_3_first      REAL,
+                    zamer_temp_3_last       REAL,
+                    gran_10_first           REAL,
+                    gran_5_10_first         REAL,
+                    gran_5_2_first          REAL,
+                    gran_2_1_first          REAL,
+                    gran_1_0_5_first        REAL,
+                    gran_0_5_0_25_first     REAL,
+                    gran_0_25_0_10_first    REAL,
+                    created_at              TEXT
+                )
+            """)
+
+            cursor.executemany("""
+                INSERT INTO temp_raschet_import (
+                    proba_id,
+                    kolba_naveska_first,
+                    kolba_naveska_last,
+                    areometr_first,
+                    zamer_temp_1_first,
+                    zamer_temp_1_last,
+                    zamer_temp_2_first,
+                    zamer_temp_2_last,
+                    zamer_temp_3_first,
+                    zamer_temp_3_last,
+                    gran_10_first,
+                    gran_5_10_first,
+                    gran_5_2_first,
+                    gran_2_1_first,
+                    gran_1_0_5_first,
+                    gran_0_5_0_25_first,
+                    gran_0_25_0_10_first,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows)
+
+            cursor.execute("DROP TABLE IF EXISTS temp_raschet_versioned")
+            cursor.execute("""
+                CREATE TEMP TABLE temp_raschet_versioned AS
+                SELECT
+                    t.proba_id,
+                    t.kolba_naveska_first,
+                    t.kolba_naveska_last,
+                    t.areometr_first,
+                    t.zamer_temp_1_first,
+                    t.zamer_temp_1_last,
+                    t.zamer_temp_2_first,
+                    t.zamer_temp_2_last,
+                    t.zamer_temp_3_first,
+                    t.zamer_temp_3_last,
+                    t.gran_10_first,
+                    t.gran_5_10_first,
+                    t.gran_5_2_first,
+                    t.gran_2_1_first,
+                    t.gran_1_0_5_first,
+                    t.gran_0_5_0_25_first,
+                    t.gran_0_25_0_10_first,
+                    t.created_at,
+                    COALESCE((
+                        SELECT MAX(gr.version)
+                        FROM grans_raschet gr
+                        WHERE gr.proba_id = t.proba_id
+                    ), 0) + 1 AS new_version
+                FROM temp_raschet_import t
+                LEFT JOIN grans_raschet cur
+                    ON cur.proba_id = t.proba_id AND cur.is_current = 1
+                WHERE cur.proba_id IS NULL
+                   OR t.kolba_naveska_first  IS NOT cur.kolba_naveska_first
+                   OR t.kolba_naveska_last   IS NOT cur.kolba_naveska_last
+                   OR t.areometr_first       IS NOT cur.areometr_first
+                   OR t.zamer_temp_1_first   IS NOT cur.zamer_temp_1_first
+                   OR t.zamer_temp_1_last    IS NOT cur.zamer_temp_1_last
+                   OR t.zamer_temp_2_first   IS NOT cur.zamer_temp_2_first
+                   OR t.zamer_temp_2_last    IS NOT cur.zamer_temp_2_last
+                   OR t.zamer_temp_3_first   IS NOT cur.zamer_temp_3_first
+                   OR t.zamer_temp_3_last    IS NOT cur.zamer_temp_3_last
+                   OR t.gran_10_first        IS NOT cur.gran_10_first
+                   OR t.gran_5_10_first      IS NOT cur.gran_5_10_first
+                   OR t.gran_5_2_first       IS NOT cur.gran_5_2_first
+                   OR t.gran_2_1_first       IS NOT cur.gran_2_1_first
+                   OR t.gran_1_0_5_first     IS NOT cur.gran_1_0_5_first
+                   OR t.gran_0_5_0_25_first  IS NOT cur.gran_0_5_0_25_first
+                   OR t.gran_0_25_0_10_first IS NOT cur.gran_0_25_0_10_first
+            """)
+
+            cursor.execute("""
+                UPDATE grans_raschet
+                SET is_current = 0,
+                    updated_at = ?
+                WHERE proba_id IN (
+                    SELECT proba_id FROM temp_raschet_versioned
+                )
+                AND is_current = 1
+            """, (current_time,))
+
+            cursor.execute("""
+                INSERT INTO grans_raschet (
+                    proba_id,
+                    version,
+                    is_current,
+                    kolba_naveska_first,
+                    kolba_naveska_last,
+                    areometr_first,
+                    zamer_temp_1_first,
+                    zamer_temp_1_last,
+                    zamer_temp_2_first,
+                    zamer_temp_2_last,
+                    zamer_temp_3_first,
+                    zamer_temp_3_last,
+                    gran_10_first,
+                    gran_5_10_first,
+                    gran_5_2_first,
+                    gran_2_1_first,
+                    gran_1_0_5_first,
+                    gran_0_5_0_25_first,
+                    gran_0_25_0_10_first,
+                    created_at,
+                    updated_at
+                )
+                SELECT
+                    proba_id,
+                    new_version,
+                    1,
+                    kolba_naveska_first,
+                    kolba_naveska_last,
+                    areometr_first,
+                    zamer_temp_1_first,
+                    zamer_temp_1_last,
+                    zamer_temp_2_first,
+                    zamer_temp_2_last,
+                    zamer_temp_3_first,
+                    zamer_temp_3_last,
+                    gran_10_first,
+                    gran_5_10_first,
+                    gran_5_2_first,
+                    gran_2_1_first,
+                    gran_1_0_5_first,
+                    gran_0_5_0_25_first,
+                    gran_0_25_0_10_first,
+                    created_at,
+                    created_at
+                FROM temp_raschet_versioned
+            """)
+
+            cursor.execute("DROP TABLE IF EXISTS temp_raschet_versioned")
+            cursor.execute("DROP TABLE IF EXISTS temp_raschet_import")
 
             conn.commit()
 
