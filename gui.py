@@ -174,9 +174,18 @@ class MainWindow(QMainWindow):
         title.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title)
 
+        objects_hlayout = QHBoxLayout()
+        layout.addLayout(objects_hlayout)
+
         self.list_widget1 = QListWidget()
         self.list_widget1.itemDoubleClicked.connect(self._on_object_chosen)
-        layout.addWidget(self.list_widget1)
+        self.list_widget1.itemClicked.connect(self._on_object_summary)
+        objects_hlayout.addWidget(self.list_widget1)
+
+        self.object_summary_box = QPlainTextEdit()
+        self.object_summary_box.setReadOnly(True)
+        self.object_summary_box.setPlaceholderText("Выберите объект, чтобы увидеть сводку")
+        objects_hlayout.addWidget(self.object_summary_box)
 
         hlayout = QHBoxLayout()
         layout.addLayout(hlayout)
@@ -194,6 +203,34 @@ class MainWindow(QMainWindow):
     def _on_object_chosen(self, item):
         self.list_widget1.setCurrentItem(item)
         self._go_to_partiya_step()
+
+    def _on_object_summary(self, item):
+        object_id = item.data(Qt.UserRole)
+        object_name = item.text()
+        try:
+            df = self.orkestr_db.db_show.get_probi_by_object(object_id)
+
+            kol_partii = df["partiya_id"].nunique()
+            kol_prob = df["proba_id"].nunique()
+
+            summary_lines = [
+                f"Объект: {object_name}",
+                f"Количество партий: {kol_partii}",
+                f"Количество проб: {kol_prob}",
+            ]
+
+            # if kol_prob:
+            #     by_status = df["status_gran"].fillna("Не назначен").value_counts()
+            #     summary_lines.append("")
+            #     summary_lines.append("По статусу грансостава:")
+            #     for status, count in by_status.items():
+            #         summary_lines.append(f"  {status}: {count}")
+
+            self.object_summary_box.setPlainText("\n".join(summary_lines))
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+            self.object_summary_box.setPlainText(f"Не удалось получить сводку: {e}")
 
     def _go_to_partiya_step(self):
         item = self.list_widget1.currentItem()
@@ -261,7 +298,7 @@ class MainWindow(QMainWindow):
 
         self.list_widget2 = QListWidget()
         self.list_widget2.itemClicked.connect(self.on_item_clicked2)
-        self.list_widget2.setFixedWidth(200)
+        self.list_widget2.setFixedWidth(300)
         vlayout2.addWidget(self.list_widget2)
 
         self.btn2 = QPushButton("Добавить партию")
