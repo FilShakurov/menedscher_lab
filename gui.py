@@ -604,6 +604,7 @@ class MainWindow(QMainWindow):
                                     f"Количество не хватающих плотностей {count_pust_plotn}\n\n"
                                     f"Количество сделанной органики {count_org}\n"
                                     f"Количество сделанной уделки {count_udelka}")
+            self.warning_box.clear()
         except Exception as e:
             print(e)
             traceback.print_exc()
