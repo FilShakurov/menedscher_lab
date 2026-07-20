@@ -177,6 +177,14 @@ def itog_raschet_gran(df_agg):
 
 
 def rashet_gran(df_agg, df_tarirovk, udelka):
+    numeric_cols = ['kolba_naveska_s_rast_last',
+       'areometr_first', 'rast_ost_first', 'gran_10_first', 'gran_5_10_first',
+       'gran_5_2_first', 'gran_2_1_first', 'gran_1_0_5_first',
+       'gran_0_5_0_25_first', 'gran_0_25_0_10_first', 'kolba_naveska_first',
+       'kolba_naveska_last', 'zamer_temp_1_first', 'zamer_temp_1_last',
+       'zamer_temp_2_first', 'zamer_temp_2_last', 'zamer_temp_3_first',
+       'zamer_temp_3_last']
+    validate_numeric_columns_with_values(df_agg, numeric_cols)
     df_agg = rashet_popravki_areometr(df_agg, df_tarirovk)
     df_agg = rashet_x1_x2_x3(df_agg, udelka)
     df_agg = itog_raschet_gran(df_agg)
@@ -216,6 +224,55 @@ def vigruzka_namiv(df_agg):
     result = result.sort_values(by=["lab_nomer", "index"])
 
     return result
+
+
+def validate_numeric_columns(df: pd.DataFrame, numeric_cols: list[str]) -> dict[str, str]:
+    problems = {}
+    for col in numeric_cols:
+        if col not in df.columns:
+            problems[col] = "missing"
+            continue
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            problems[col] = f"dtype={df[col].dtype}"
+    return problems
+
+
+def find_non_convertible_to_numeric(
+        df: pd.DataFrame,
+        numeric_cols: list[str],
+) -> dict[str, list[tuple]]:
+    problems: dict[str, list[tuple]] = {}
+
+    for col in numeric_cols:
+        if col not in df.columns:
+            problems[col] = [("__missing_column__", None)]
+            continue
+
+        s = df[col]
+        converted = pd.to_numeric(s, errors="coerce")
+        mask_bad = converted.isna() & s.notna()
+
+        bad = s[mask_bad]
+        if not bad.empty:
+            problems[col] = list(zip(bad.index.tolist(), bad.tolist()))
+
+    return problems
+
+
+def validate_numeric_columns_with_values(
+        df: pd.DataFrame,
+        numeric_cols: list[str],
+) -> None:
+    type_issues = validate_numeric_columns(df, numeric_cols)
+    value_issues = find_non_convertible_to_numeric(df, numeric_cols)
+
+    if type_issues or any(value_issues.values()):
+        msg_parts = []
+        if type_issues:
+            msg_parts.append(f"dtype issues: {type_issues}")
+        if any(value_issues.values()):
+            msg_parts.append(f"Некорректные значения: {value_issues}")
+        raise ValueError("В столбце есть нечисловые значения: " + "; ".join(msg_parts))
 
 
 
