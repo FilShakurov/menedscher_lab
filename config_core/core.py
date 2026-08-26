@@ -32,7 +32,16 @@ def zagr_file2(path):
     #
     df = df.dropna(subset=['lab_nomer'])
 
+    df["lab_nomer"] = _norm_lab_nomer(df["lab_nomer"])
+
     return df
+
+def _norm_lab_nomer(s):
+    return (
+        s.astype("string")
+         .str.strip()
+         .str.replace(r"\.0$", "", regex=True)  # 1001.0 -> 1001
+    )
 
 
 def process_multiheader_column(col):

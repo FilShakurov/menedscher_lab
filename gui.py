@@ -105,6 +105,9 @@ class NewQDialog2(QDialog):
 
         try:
             df = zagr_file2(path_rab_svodn)
+
+
+
             self.orkestr_db.db_add.add_rab_svodnaya(df, db_id)
 
             df2 = RaschetGranov.zagr_excel(path_rab_svodn)
